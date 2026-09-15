@@ -232,3 +232,23 @@ tr.total td { font-weight: 700; background: var(--navy-100); }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 .loading { color: var(--muted); font-size: 12.5px; padding: 8px 0; }
+
+/* ------------------------------------------- derivation and staleness */
+.auto-tag {
+  display: inline-block; padding: 0 6px; border-radius: 999px;
+  background: var(--navy-100); color: var(--navy);
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+}
+.field-head { display: flex; align-items: center; gap: 5px; }
+label.field.derived input, label.field.derived select { background: #f6f9ff; border-color: #bcd0f0; }
+
+.stale-chip {
+  float: right; text-transform: none; letter-spacing: 0; font-weight: 600;
+  color: var(--amber); font-size: 11px;
+}
+#live-panel.stale { opacity: .45; transition: opacity .12s ease; }
+
+.break-row.quoted { background: var(--navy-100); font-weight: 700; }
+.price-card { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; align-items: baseline; }
+.price-card .amount { font-size: 22px; font-weight: 700; color: var(--navy); font-variant-numeric: tabular-nums; }
+.price-card .sub { grid-column: 1 / -1; color: var(--muted); font-size: 11.5px; margin-bottom: 8px; }

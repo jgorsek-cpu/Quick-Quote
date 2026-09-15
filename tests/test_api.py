@@ -36,6 +36,13 @@ def test_reference_catalogs_are_served(client):
     assert client.get("/api/reference/overview").json()["rates"]["labor_rate_per_hour"] > 0
 
 
+def test_quote_carries_price_breaks_and_pricing(client):
+    body = client.post("/api/quotes", json=QUOTE).json()
+    assert body["price_breaks"]
+    assert {item["channel"] for item in body["pricing"]} == {"contract", "b2c"}
+    assert body["product"]["derived"]
+
+
 def test_create_quote_returns_a_full_package(client):
     body = client.post("/api/quotes", json=QUOTE).json()
     assert body["quote_id"]
@@ -46,11 +53,56 @@ def test_create_quote_returns_a_full_package(client):
 
 def test_preview_does_not_store_a_quote(client):
     before = len(client.get("/api/quotes").json())
-    preview = client.post("/api/quotes/preview", json=QUOTE).json()
-    after = len(client.get("/api/quotes").json())
-    assert after == before
-    created = client.post("/api/quotes", json=QUOTE).json()
-    assert preview["summary"]["primary_per_bottle"] == created["summary"]["primary_per_bottle"]
+    client.post("/api/quotes/preview", json=QUOTE)
+    assert len(client.get("/api/quotes").json()) == before
+
+
+class TestLivePreviewParity:
+    """The live estimate and the generated package are one cost path.
+
+    The interface shows the preview figure while a rep edits and the package
+    figure once they generate. If those could ever disagree for the same
+    input, the number a rep quotes from would not be the number in the
+    workbook.
+    """
+
+    @pytest.mark.parametrize("body", [
+        QUOTE,
+        {**QUOTE, "product": {**QUOTE["product"], "annual_volume_bottles": 50000}},
+        {**QUOTE, "product": {**QUOTE["product"], "annual_volume_bottles": None}},
+        {**QUOTE, "packaging": []},                       # engine derives the pack-out
+        {**QUOTE, "formula": [{"name": "No Such Ingredient", "claimed_mg": 100}]},
+    ])
+    def test_every_total_matches(self, client, body):
+        preview = client.post("/api/quotes/preview", json=body).json()["summary"]
+        created = client.post("/api/quotes", json=body).json()["summary"]
+        for key in ("primary_per_bottle", "raw_materials", "packaging",
+                    "manufacturing", "low_per_bottle", "high_per_bottle",
+                    "excluded_count", "quote_confidence"):
+            assert preview[key] == created[key], f"{key} differs between preview and package"
+
+    def test_manufacturing_breakdown_matches(self, client):
+        preview = client.post("/api/quotes/preview", json=QUOTE).json()["manufacturing"]
+        created = client.post("/api/quotes", json=QUOTE).json()["manufacturing"]
+        for key in ("compounding_per_bottle", "encapsulation_per_bottle",
+                    "bottling_per_bottle", "total_per_bottle", "machine"):
+            assert preview[key] == created[key], f"{key} differs"
+
+    def test_the_total_is_the_sum_of_its_parts(self, client):
+        """Guards the specific failure of a step being dropped from one path."""
+        summary = client.post("/api/quotes/preview", json=QUOTE).json()
+        parts = summary["summary"]
+        manufacturing = summary["manufacturing"]
+        assert parts["primary_per_bottle"] == pytest.approx(
+            parts["raw_materials"] + parts["packaging"] + parts["manufacturing"])
+        assert parts["manufacturing"] == pytest.approx(
+            (manufacturing["compounding_per_bottle"] or 0)
+            + (manufacturing["encapsulation_per_bottle"] or 0)
+            + (manufacturing["bottling_per_bottle"] or 0))
+
+    def test_the_quoted_total_sits_inside_its_own_range(self, client):
+        parts = client.post("/api/quotes/preview", json=QUOTE).json()["summary"]
+        assert parts["low_per_bottle"] <= parts["primary_per_bottle"] <= parts["high_per_bottle"]
 
 
 def test_artifacts_download(client):

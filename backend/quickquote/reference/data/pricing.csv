@@ -1,0 +1,3 @@
+channel,target_margin_pct,label,notes
+contract,20.0,Contract / private label,PLACEHOLDER - Finance must confirm. Margin = (price - cost) / price.
+b2c,80.0,Direct to consumer,PLACEHOLDER - Finance must confirm. Margin = (price - cost) / price.

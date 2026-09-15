@@ -1,0 +1,40 @@
+key,bulk_density_g_ml,notes
+magnesium stearate,0.25,Very low density lubricant
+microcrystalline cellulose,0.35,MCC PH-102 tapped
+silicon dioxide,0.15,Fumed silica
+rice flour,0.55,
+maltodextrin,0.50,
+magnesium oxide,1.20,Dense mineral oxide
+calcium carbonate,1.10,
+magnesium citrate,0.70,
+magnesium glycinate,0.60,
+zinc oxide,1.30,
+ferrous fumarate,1.00,
+creatine monohydrate,0.70,
+msm,0.75,
+glucosamine sulfate,0.75,
+glucosamine hcl,0.80,
+coenzyme q10,0.45,
+lutein,0.40,5 percent beadlet
+excipient,0.45,Class default - flow agents and fillers
+mineral_salt,0.90,Class default - mineral salts
+calcium_magnesium,0.90,Class default - macro minerals
+trace_minerals,1.00,Class default
+iron,1.00,Class default
+amino_acids,0.60,Class default - free form amino acids
+botanical_powder,0.45,Class default - whole herb powders
+botanical_extract,0.55,Class default - standardized extracts
+coq10,0.45,Class default
+vitamin_c,0.90,Class default
+vitamin_a,0.50,Class default
+vitamin_d,0.50,Class default
+vitamin_e,0.50,Class default
+vitamin_k,0.50,Class default
+biotin,0.50,Class default - trituration
+folate,0.60,Class default
+vitamin_b12,0.50,Class default - trituration
+vitamin_b6,0.60,Class default
+probiotic,0.55,Class default
+enzyme,0.55,Class default
+omega_oil,0.50,Class default
+default,0.55,Applied when neither identity nor class is on file - raises an R&D flag

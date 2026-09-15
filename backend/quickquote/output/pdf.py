@@ -150,7 +150,7 @@ def build_quote_pdf(result: QuoteResult) -> bytes:
     confidence_color = _CONFIDENCE_COLOR.get(summary.quote_confidence, GREY)
     story.append(_kv_table([
         ("Primary", Paragraph(f"<b>${summary.primary_per_bottle:,.2f}</b>", style["body"])),
-        ("Range (+/-10% on materials)",
+        ("Worst case (+/-10% materials)",
          Paragraph(f"${summary.low_per_bottle:,.2f} &ndash; ${summary.high_per_bottle:,.2f}",
                    style["body"])),
         ("Confidence", Paragraph(
@@ -204,6 +204,38 @@ def build_quote_pdf(result: QuoteResult) -> bytes:
         ],
         [3.4 * inch, 1.6 * inch, 1.5 * inch],
     ))
+
+    if result.price_breaks:
+        story.append(Paragraph("Volume price breaks", style["h2"]))
+        story.append(_grid(
+            ["Bottles", "$/bottle", "Materials", "Packaging", "Manufacturing"],
+            [[f"{item.volume_bottles:,}" + (" (quoted)" if item.is_quoted_volume else ""),
+              f"${item.primary_per_bottle:,.2f}", f"${item.raw_materials:,.2f}",
+              f"${item.packaging:,.2f}", f"${item.manufacturing:,.2f}"]
+             for item in result.price_breaks],
+            [1.5 * inch, 1.3 * inch, 1.3 * inch, 1.2 * inch, 1.2 * inch],
+        ))
+        story.append(Paragraph(
+            "Material cost per bottle is flat across the ladder: purchase-order history "
+            "carries no volume-tiered pricing. What moves is per-batch labour and "
+            "overhead, and the machine the run size selects.", style["small"]))
+
+    if result.pricing:
+        story.append(Paragraph("Recommended price", style["h2"]))
+        story.append(_grid(
+            ["Channel", "Target margin", "Price/bottle", "Margin/bottle"],
+            [[item.label, f"{item.target_margin_pct:g}%",
+              f"${item.price_per_bottle:,.2f}", f"${item.margin_dollars:,.2f}"]
+             for item in result.pricing],
+            [2.6 * inch, 1.3 * inch, 1.3 * inch, 1.3 * inch],
+        ))
+        story.append(Spacer(1, 6))
+        story.append(_banner(
+            "<b>These are recommendations, not prices.</b> Margin targets are configured "
+            "reference data, not a Finance decision. Quick Quote does not set final "
+            "pricing, margin or customer-facing terms.",
+            RED, style["banner"],
+        ))
 
     if summary.cost_drivers:
         story.append(Paragraph("Top 5 cost drivers", style["h2"]))

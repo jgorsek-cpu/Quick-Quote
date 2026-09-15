@@ -1,8 +1,11 @@
 from datetime import date
 
+import csv
+import shutil
+
 import pytest
 
-from quickquote.reference.loader import get_reference_data
+from quickquote.reference.loader import get_reference_data, load_reference_data
 from quickquote.schemas import FormulaLine, PackagingLine, ParsedQuote, ProductSpec
 
 AS_OF = date(2026, 9, 15)
@@ -11,6 +14,36 @@ AS_OF = date(2026, 9, 15)
 @pytest.fixture(scope="session")
 def reference():
     return get_reference_data()
+
+
+@pytest.fixture(scope="session")
+def spec_reference(tmp_path_factory):
+    """Reference data configured the way the written specification assumes.
+
+    The shipped defaults cost each production step at its own work centre's
+    rate and add a breakage allowance to components. The specification's
+    worked example predates both: it uses one blended labor/OH pair and exact
+    component counts. This fixture turns those two settings off so the example
+    can still be asserted to the cent, which is what makes it a regression
+    test of the cost maths rather than of the current rate policy.
+    """
+    source = get_reference_data().source_dir
+    target = tmp_path_factory.mktemp("spec_reference")
+    for path in source.glob("*.csv"):
+        shutil.copy(path, target / path.name)
+
+    rates_path = target / "labor_rates.csv"
+    rows = list(csv.DictReader(rates_path.open()))
+    overrides = {"use_work_centre_rates": "0", "component_loss_factor": "1.0"}
+    for row in rows:
+        if row["key"] in overrides:
+            row["value"] = overrides.pop(row["key"])
+    with rates_path.open("w", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=["key", "value", "unit", "notes"])
+        writer.writeheader()
+        writer.writerows(rows)
+
+    return load_reference_data(target)
 
 
 @pytest.fixture

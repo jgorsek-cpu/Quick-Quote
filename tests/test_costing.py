@@ -98,47 +98,53 @@ class TestManufacturing:
         assert reference.compounding_hours(30) == 11.75
 
     def test_no_volume_means_no_estimate(self, reference):
-        estimate = estimate_manufacturing(ProductSpec(dosage_form="Capsule"), 7, reference)
+        estimate, _ = estimate_manufacturing(ProductSpec(dosage_form="Capsule"), 7, reference)
         assert not estimate.estimated
         assert "Volume not provided" in estimate.reason
 
     def test_machine_default_is_recorded_as_assumed(self, reference):
-        estimate = estimate_manufacturing(
-            ProductSpec(dosage_form="Capsule", annual_volume_bottles=1000), 7, reference)
+        estimate, _ = estimate_manufacturing(
+            ProductSpec(dosage_form="Capsule", annual_volume_bottles=1000,
+                        count_per_bottle=60), 7, reference)
         assert estimate.machine_assumed
-        assert estimate.machine == "BOSCH 705 + CVC1"
+        assert estimate.machine == "Schaefer"       # 60,000 capsules
+        assert estimate.bottling_line == "CVC1"
 
 
 class TestSpecificationExample:
-    """The Vitamin Shoppe example printed in section 7 of the specification."""
+    """The Vitamin Shoppe example printed in section 7 of the specification.
 
-    def test_reproduces_the_published_breakdown(self, heart_health, reference):
-        result = run_pipeline(heart_health, reference, as_of=AS_OF)
+    Run against ``spec_reference``, which configures the single blended
+    labor/OH rate and exact component counts the specification assumes.
+    """
+
+    def test_reproduces_the_published_breakdown(self, heart_health, spec_reference):
+        result = run_pipeline(heart_health, spec_reference, as_of=AS_OF)
         summary = result.summary
         assert summary.raw_materials == pytest.approx(4.51, abs=0.02)
         assert summary.packaging == pytest.approx(0.85, abs=0.01)
         assert summary.manufacturing == pytest.approx(1.28, abs=0.01)
         assert summary.primary_per_bottle == pytest.approx(6.64, abs=0.02)
 
-    def test_confidence_is_low_because_lines_are_outstanding(self, heart_health, reference):
-        result = run_pipeline(heart_health, reference, as_of=AS_OF)
+    def test_confidence_is_low_because_lines_are_outstanding(self, heart_health, spec_reference):
+        result = run_pipeline(heart_health, spec_reference, as_of=AS_OF)
         assert result.summary.quote_confidence == LOW
         assert set(result.summary.unmatched_items) == {"Aged Garlic Extract", "Red Yeast Rice"}
 
-    def test_only_accepted_lines_reach_the_primary_total(self, heart_health, reference):
-        result = run_pipeline(heart_health, reference, as_of=AS_OF)
+    def test_only_accepted_lines_reach_the_primary_total(self, heart_health, spec_reference):
+        result = run_pipeline(heart_health, spec_reference, as_of=AS_OF)
         accepted = sum(line.cost_per_bottle or 0 for line in result.ingredients
                        if line.match.accepted)
         assert result.summary.raw_materials == pytest.approx(accepted)
 
-    def test_the_published_flags_are_all_present(self, heart_health, reference):
-        result = run_pipeline(heart_health, reference, as_of=AS_OF)
+    def test_the_published_flags_are_all_present(self, heart_health, spec_reference):
+        result = run_pipeline(heart_health, spec_reference, as_of=AS_OF)
         reasons = " ".join(f"{flag.owner}|{flag.item}|{flag.reason}" for flag in result.flags)
         assert "419 days old" in reasons                      # stale grape extract PO
         assert "$152.50-$525.00" in reasons                   # CoQ10 price variance
         assert "no po record found for identity 'aged garlic extract'" in reasons.lower()
         assert "Potency unknown" in reasons                   # red yeast rice
-        assert "assumed BOSCH 705 + CVC1" in reasons          # machine default
+        assert "BOSCH 705 + CVC1" in reasons                  # machine assumption
         assert "MOQ not specified" in reasons
         assert "Timeline not specified" in reasons
         assert "understates true cost" in reasons             # Finance

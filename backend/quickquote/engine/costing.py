@@ -88,12 +88,16 @@ def cost_packaging(
     match: MatchResult,
     reference: ReferenceData,
     qty_per_bottle: float | None,
+    units_per_container: float | None = None,
 ) -> CostedPackaging:
     """Cost one packaging line.
 
-    Quote-sheet-listed cost wins over PO history. ``M`` priced per thousand
-    units. A per-bottle component implying more than the UoM sanity ceiling
-    from a PO unit cost is auto-demoted to Needs Review.
+    Quote-sheet-listed cost wins over PO history. ``M`` is priced per thousand
+    units. ``units_per_container`` spreads a purchased unit that holds many
+    bottles -- a shipper, a master case, pallet materials -- across the bottles
+    it packs out, so a 12-bottle carton is not charged once per bottle. A
+    per-bottle component implying more than the UoM sanity ceiling from a PO
+    unit cost is auto-demoted to Needs Review.
     """
     costed = CostedPackaging(
         role=line.role,
@@ -101,6 +105,7 @@ def cost_packaging(
         match=match,
         input_part_code=line.part_code,
         qty_per_bottle=qty_per_bottle,
+        units_per_container=units_per_container,
     )
     if line.notes:
         costed.notes.append(line.notes)
@@ -123,6 +128,13 @@ def cost_packaging(
     divisor = 1000.0 if uom == "M" else 1.0
     if uom == "M":
         costed.notes.append("Priced per thousand units")
+
+    if units_per_container and units_per_container > 1:
+        divisor *= units_per_container
+        costed.notes.append(
+            f"One unit packs out {units_per_container:g} bottles; "
+            "cost spread across them"
+        )
 
     costed.cost_per_bottle = qty_per_bottle * unit_cost / divisor
     costed.cost_low, costed.cost_high = cost_range(costed.cost_per_bottle, reference)

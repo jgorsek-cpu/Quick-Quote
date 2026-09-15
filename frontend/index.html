@@ -32,6 +32,7 @@
       <div class="card">
         <h3>Product</h3>
         <div class="body">
+          <p class="small muted" style="margin-top:0">Any two of capsules&nbsp;per&nbsp;serving, servings&nbsp;per&nbsp;bottle and count&nbsp;per&nbsp;bottle give the third. Fields the system works out are marked <span class="auto-tag">auto</span> &mdash; type over any of them to override.</p>
           <div class="grid" id="product-form">
             <label class="field">Customer<input id="p-customer" placeholder="e.g. Vitamin Shoppe"></label>
             <label class="field">Brand<input id="p-brand"></label>
@@ -50,9 +51,10 @@
                 <option value="">Not specified</option><option>Vegetable</option><option>Gelatin</option>
               </select>
             </label>
-            <label class="field">Serving size<input id="p-serving_size" placeholder="e.g. 3 capsules"></label>
+            <label class="field">Capsules per serving<input id="p-capsules_per_serving" type="number" min="1" placeholder="auto"></label>
             <label class="field">Servings per bottle<input id="p-servings_per_bottle" type="number" min="1" value="30"></label>
             <label class="field">Count per bottle<input id="p-count_per_bottle" type="number" min="1" value="90"></label>
+            <label class="field">Serving size<input id="p-serving_size" placeholder="auto"></label>
             <label class="field">Volume (bottles)<input id="p-annual_volume_bottles" type="number" min="1" placeholder="required for mfg cost"></label>
             <label class="field">MOQ<input id="p-moq" type="number" min="0"></label>
             <label class="field">Timeline<input id="p-timeline" placeholder="e.g. Q1 2027"></label>
@@ -88,8 +90,8 @@
         <h3>Packaging &mdash; select components</h3>
         <div class="body">
           <div class="actions" style="margin-bottom:12px">
-            <button class="btn ghost small" id="pkg-standard">Add standard bottle pack</button>
-            <span class="small muted">capsule shell, bottle, cap, label, neckband, cotton, desiccant, shipper</span>
+            <button class="btn ghost small" id="pkg-rederive">Re-derive from the product spec</button>
+            <span class="small muted">Shell, bottle and closure are sized from the capsule size and count. Change any line to override it.</span>
           </div>
           <div class="picker">
             <input class="search" id="pkg-search" placeholder="Search packaging identities and sizes&hellip;">
@@ -113,9 +115,9 @@
     <!-- live cost panel -->
     <div class="sticky">
       <div class="card">
-        <h3>Live estimate</h3>
+        <h3>Live estimate <span class="stale-chip" id="stale-chip" hidden>recalculating&hellip;</span></h3>
         <div class="body" id="live-panel">
-          <p class="empty">Add an ingredient or a packaging component to see costs.</p>
+          <p class="empty">Add an ingredient to see costs. Packaging is worked out for you.</p>
         </div>
       </div>
       <div class="card">

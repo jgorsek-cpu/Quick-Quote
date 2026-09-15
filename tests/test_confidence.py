@@ -7,8 +7,9 @@ from quickquote.schemas import CostedIngredient, MatchResult
 
 from .conftest import AS_OF
 
-FRESH = AS_OF - timedelta(days=30)
-STALE = AS_OF - timedelta(days=400)
+FRESH = AS_OF - timedelta(days=30)     # under six months
+AGEING = AS_OF - timedelta(days=250)   # six months to a year
+STALE = AS_OF - timedelta(days=400)    # over a year
 
 
 def match(status=ACCEPTED, method="Tier 1 - exact part code", po_date=FRESH):
@@ -19,8 +20,18 @@ class TestLineConfidence:
     def test_exact_match_on_a_fresh_po_is_high(self, reference):
         assert line_confidence(match(), reference, AS_OF) == HIGH
 
-    def test_exact_match_on_a_stale_po_is_medium(self, reference):
-        assert line_confidence(match(po_date=STALE), reference, AS_OF) == MEDIUM
+    def test_exact_match_on_an_ageing_po_drops_to_medium(self, reference):
+        """Past six months the price is no longer strong evidence of today's cost."""
+        assert line_confidence(match(po_date=AGEING), reference, AS_OF) == MEDIUM
+
+    def test_a_price_over_a_year_old_is_low_however_it_matched(self, reference):
+        assert line_confidence(match(po_date=STALE), reference, AS_OF) == LOW
+        assert line_confidence(
+            match(method="Tier 2 - identity match", po_date=STALE), reference, AS_OF) == LOW
+
+    def test_a_price_with_no_date_is_low(self, reference):
+        """An unknown-age price is not a confident one."""
+        assert line_confidence(match(po_date=None), reference, AS_OF) == LOW
 
     def test_identity_match_is_medium(self, reference):
         assert line_confidence(match(method="Tier 2 - identity match"), reference, AS_OF) == MEDIUM

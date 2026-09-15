@@ -83,21 +83,33 @@ $$("nav.tabs button").forEach((button) =>
 // ------------------------------------------------------ product form
 const PRODUCT_FIELDS = [
   "customer", "brand", "formula_name", "customer_sku", "dosage_form",
-  "capsule_size", "capsule_type", "serving_size", "servings_per_bottle",
-  "count_per_bottle", "annual_volume_bottles", "moq", "timeline", "machine",
+  "capsule_size", "capsule_type", "serving_size", "capsules_per_serving",
+  "servings_per_bottle", "count_per_bottle", "annual_volume_bottles",
+  "moq", "timeline", "machine",
 ];
-const INT_FIELDS = new Set(["servings_per_bottle", "count_per_bottle", "annual_volume_bottles", "moq"]);
+const INT_FIELDS = new Set(["servings_per_bottle", "count_per_bottle",
+                            "annual_volume_bottles", "moq", "capsules_per_serving"]);
+
+/* Fields the rep has typed into. A value the system worked out is written
+ * back into the input for them to see, so without this the next payload
+ * would send it as if they had chosen it, and it would stop re-deriving. */
+const userEdited = new Set();
 
 function readProduct() {
   const product = {};
   for (const field of PRODUCT_FIELDS) {
     const input = $(`#p-${field}`);
     if (!input) continue;
+    if (!userEdited.has(field) && input.dataset.derived === "1") {
+      product[field] = null;      // let the engine derive it again
+      continue;
+    }
     const raw = input.value.trim();
     if (!raw) { product[field] = null; continue; }
     product[field] = INT_FIELDS.has(field) ? parseInt(raw, 10) : raw;
     if (INT_FIELDS.has(field) && !Number.isFinite(product[field])) product[field] = null;
   }
+  product.auto_packaging = state.packaging.length === 0;
   const split = (id) => $(`#${id}`).value.split(";").map((s) => s.trim()).filter(Boolean);
   product.claims = split("p-claims");
   product.testing = split("p-testing");
@@ -105,8 +117,12 @@ function readProduct() {
 }
 
 function payload() {
+  const product = readProduct();
+  const autoPackaging = product.auto_packaging;
+  delete product.auto_packaging;
   return {
-    product: readProduct(),
+    auto_packaging: autoPackaging,
+    product,
     formula: state.formula.map(({name, claimed_mg, part_code}) => ({name, claimed_mg, part_code})),
     packaging: state.packaging.map(({role, description, qty_per_bottle, listed_unit_cost, part_code}) =>
       ({role, description, qty_per_bottle, listed_unit_cost, part_code})),
@@ -144,9 +160,57 @@ function renderIngredientOptions(query) {
     results.append(el("div", {class: "option", onclick: () => addIngredient(item)},
       el("span", {class: "name"}, item.display_name),
       badge(item.expected_status, statusClass(item.expected_status)),
-      el("span", {class: "meta"},
-        best ? `${best.part_number} · ${money(best.latest_unit_cost)}/${best.uom}` : "no PO record"),
+      el("span", {class: "meta"}, best ? poMeta(best) : "no PO record"),
     ));
+  }
+}
+
+/* Show what the engine worked out, in the fields themselves, tagged so the
+ * rep can see it was not their entry and can type over it. */
+function adoptDerived(result) {
+  const derived = result.product.derived || {};
+  for (const field of PRODUCT_FIELDS) {
+    const input = $(`#p-${field}`);
+    if (!input) continue;
+    const label = input.closest("label");
+    const basis = derived[field];
+    if (basis && !userEdited.has(field)) {
+      const value = result.product[field];
+      if (value != null && String(value) !== input.value) input.value = value;
+      input.dataset.derived = "1";
+      input.title = `Worked out from: ${basis}`;
+      if (label && !label.querySelector(".auto-tag")) {
+        label.classList.add("derived");
+        // The label is a flex column, so the tag goes inside a header row
+        // alongside the caption rather than on a line of its own.
+        let head = label.querySelector(".field-head");
+        if (!head) {
+          head = el("span", {class: "field-head"});
+          label.insertBefore(head, label.firstChild);
+          head.append(label.firstChild.nextSibling);   // the caption text node
+        }
+        head.append(el("span", {class: "auto-tag", title: basis}, "auto"));
+      }
+    } else if (!basis && input.dataset.derived === "1" && !userEdited.has(field)) {
+      input.dataset.derived = "0";
+      label?.classList.remove("derived");
+      label?.querySelector(".auto-tag")?.remove();
+    }
+  }
+
+  // Packaging the engine built is pulled into the table so it is visible and
+  // editable, rather than appearing only in the final package.
+  if (state.packaging.length === 0 && result.packaging.length) {
+    state.packaging = result.packaging.map((line) => ({
+      role: line.role,
+      description: line.description,
+      qty_per_bottle: null,
+      listed_unit_cost: null,
+      part_code: null,
+      meta: state.packagingCatalog.find((item) => item.role === line.role) || null,
+      autoNote: line.notes?.[0] || "",
+    }));
+    renderPackaging();
   }
 }
 
@@ -168,11 +232,22 @@ function renderPackagingOptions(query) {
         el("span", {class: "name"}, label),
         badge(item.role.replace(/_/g, " "), "neutral"),
         el("span", {class: "meta"},
-          option ? `${option.part_number} · ${money(option.latest_unit_cost, 4)}/${option.uom}` : "no PO record"),
+          option ? poMeta(option, 4) : "no PO record"),
       ));
     }
   }
   if (!count) results.append(el("div", {class: "empty"}, "No packaging identity matches that search."));
+}
+
+/* A price with no date is not evidence of today's cost, so the age travels
+ * with every figure rather than living only in the flags. */
+function poMeta(option, digits = 2) {
+  const age = option.po_age_days;
+  const when = age == null ? "no date"
+    : age > 365 ? `${Math.floor(age / 365)}y old`
+    : age > 60  ? `${Math.round(age / 30)}mo old`
+    : `${age}d old`;
+  return `${option.part_number} · ${money(option.latest_unit_cost, digits)}/${option.uom} · ${when}`;
 }
 
 function addIngredient(item) {
@@ -316,54 +391,39 @@ function renderPackaging() {
   });
 }
 
-// --------------------------------------------------- standard pack
-const STANDARD_PACK = [
-  ["capsule_shell", "vegetable capsule shell"],
-  ["bottle", "hdpe bottle white"],
-  ["cap", "cr cap white"],
-  ["label", "pressure sensitive label"],
-  ["neckband", "shrink neckband"],
-  ["cotton", "cotton coil"],
-  ["desiccant", "desiccant canister"],
-  ["shipper", "corrugated shipper"],
-];
-
-$("#pkg-standard").addEventListener("click", () => {
-  const capsuleType = ($("#p-capsule_type").value || "Vegetable").toLowerCase();
-  for (const [role, canonical] of STANDARD_PACK) {
-    let wanted = canonical;
-    if (role === "capsule_shell") {
-      wanted = capsuleType.startsWith("gel") ? "gelatin capsule shell" : "vegetable capsule shell";
-    }
-    const item = state.packagingCatalog.find((entry) => entry.canonical === wanted);
-    if (!item) continue;
-    if (state.packaging.some((line) => line.role === role)) continue;
-
-    // For a size-bearing role leave the identity generic: the engine resolves
-    // the capsule size from the product spec, and an ambiguous bottle size
-    // should be chosen deliberately rather than guessed here.
-    let option = null;
-    if (role === "capsule_shell") {
-      const size = $("#p-capsule_size").value;
-      option = item.po_options.find((entry) => entry.capsule_size === size) || null;
-    } else if (item.po_options.length === 1) {
-      option = item.po_options[0];
-    }
-    // Where several sizes exist the rep chooses; nothing here guesses one.
-    state.packaging.push({
-      role, description: option ? option.description : item.display_name,
-      qty_per_bottle: null, listed_unit_cost: null, part_code: null, meta: item,
-    });
-  }
+// ------------------------------------------------ packaging re-derive
+/* Clearing the table makes the next preview send auto_packaging, so the
+ * engine re-sizes the shell, bottle and closure from the current spec. */
+$("#pkg-rederive").addEventListener("click", () => {
+  state.packaging = [];
   renderPackaging();
   schedulePreview();
 });
 
 // ------------------------------------------------------- live preview
 let previewTimer = null;
+let previewRunning = null;
+
+/** Dim the panel the moment an edit lands, so a stale number never reads as current. */
+function markStale() {
+  if (state.preview) {
+    $("#live-panel").classList.add("stale");
+    $("#stale-chip").hidden = false;
+  }
+}
+
 function schedulePreview() {
   clearTimeout(previewTimer);
+  markStale();
   previewTimer = setTimeout(runPreview, 260);
+}
+
+/** Run any pending preview now and wait for it. The live figure and the
+ *  generated package must come from the same payload. */
+async function flushPreview() {
+  clearTimeout(previewTimer);
+  await runPreview();
+  if (previewRunning) await previewRunning.catch(() => {});
 }
 
 /* A preview must not rebuild the rows: a rep may be mid-keystroke in one of
@@ -374,7 +434,8 @@ function refreshStatuses(result) {
     if (!costed) continue;
     const context = costed.match.matched_code
       ? `${costed.match.matched_code} · ${money(costed.cost_per_kg)}/kg` +
-        (costed.cost_per_bottle != null ? ` · ${money4(costed.cost_per_bottle)}/bottle` : "")
+        (costed.cost_per_bottle != null ? ` · ${money4(costed.cost_per_bottle)}/bottle` : "") +
+        ` · PO ${costed.match.latest_po_date || "undated"}`
       : costed.match.reason;
     mount(row.cells[3], badge(costed.match.status, statusClass(costed.match.status)));
     row.cells[4].textContent = context;
@@ -401,16 +462,38 @@ async function runPreview() {
   }
 
   const token = ++state.previewToken;
+  previewRunning = jsonPost("/api/quotes/preview", payload());
   try {
-    const result = await jsonPost("/api/quotes/preview", payload());
+    const result = await previewRunning;
     if (token !== state.previewToken) return;   // a newer edit already won
     state.preview = result;
+    adoptDerived(result);
     renderLivePanel(result);
     refreshStatuses(result);
+    $("#live-panel").classList.remove("stale");
+    $("#stale-chip").hidden = true;
   } catch (error) {
     if (token !== state.previewToken) return;
+    $("#live-panel").classList.remove("stale");
+    $("#stale-chip").hidden = true;
     $("#live-panel").replaceChildren(el("div", {class: "alert danger"}, String(error.message)));
   }
+}
+
+/* One headline used by both the live panel and the package, so the total and
+ * its exclusion caveat can never drift apart between the two views. */
+function headline(summary) {
+  return el("div", {class: "headline"},
+    el("div", {class: "label"}, "Cost per bottle · Accepted lines only"),
+    el("div", {class: "value"}, money(summary.primary_per_bottle)),
+    el("div", {class: "range"},
+      `${money(summary.low_per_bottle)} – ${money(summary.high_per_bottle)} worst case`),
+    el("div", {style: "margin-top:8px"},
+      badge(`${summary.quote_confidence} confidence`, confClass(summary.quote_confidence)),
+      summary.excluded_count
+        ? el("span", {style: "margin-left:6px"},
+            badge(`${summary.excluded_count} line(s) excluded`, "unmatched"))
+        : null));
 }
 
 function breakdownBars(summary) {
@@ -428,6 +511,55 @@ function breakdownBars(summary) {
       el("span", {class: "amt"}, money(value)))));
 }
 
+/* Volume price breaks. Each rung is a full pipeline run at that volume, so
+ * per-batch cost amortises and the machine can change with the run size.
+ * Material cost per bottle does not move: purchase-order history carries no
+ * volume-tiered pricing, and inventing a discount curve would be guessing. */
+function priceBreakCard(breaks, compact = false) {
+  if (!breaks || !breaks.length) return null;
+  const rows = breaks.map((b) => el("tr", {class: b.is_quoted_volume ? "break-row quoted" : "break-row"},
+    el("td", {class: "num"}, num(b.volume_bottles)),
+    el("td", {class: "num"}, money(b.primary_per_bottle)),
+    compact ? null : el("td", {class: "num"}, money(b.manufacturing)),
+    compact ? null : el("td", {class: "small"}, b.machine)));
+
+  const head = el("tr", {},
+    el("th", {class: "num"}, "Bottles"),
+    el("th", {class: "num"}, "$/bottle"),
+    compact ? null : el("th", {class: "num"}, "Mfg"),
+    compact ? null : el("th", {}, "Machine"));
+
+  return el("div", {class: "card"},
+    el("h3", {}, "Volume price breaks"),
+    el("div", {class: "body tight scroll-x"},
+      el("table", {}, el("thead", {}, head), el("tbody", {}, rows))),
+    el("div", {class: "body", style: "padding-top:0"},
+      el("p", {class: "small muted", style: "margin:0"},
+        "Material cost per bottle is flat across the ladder — PO history holds no " +
+        "volume-tiered pricing. What moves is per-batch labour and overhead, and " +
+        "the machine the run size selects.")));
+}
+
+/* Recommended prices. The system prepares quotes; it does not set pricing,
+ * so these are labelled as recommendations and carry their margin basis. */
+function pricingCard(pricing, summary) {
+  if (!pricing || !pricing.length) return null;
+  return el("div", {class: "card"},
+    el("h3", {}, "Recommended price — for Sales and Finance review"),
+    el("div", {class: "body"},
+      pricing.map((item) => el("div", {class: "price-card", style: "margin-bottom:10px"},
+        el("span", {}, item.label),
+        el("span", {class: "amount"}, money(item.price_per_bottle)),
+        el("span", {class: "sub"},
+          `${item.target_margin_pct}% target margin · ${money(item.margin_dollars)}/bottle over cost`))),
+      el("div", {class: "alert warn", style: "margin-bottom:0"},
+        el("strong", {}, "Not a price. "),
+        "Margin targets are configured reference data, not a Finance decision. ",
+        summary.excluded_count
+          ? `Cost excludes ${summary.excluded_count} unresolved line(s), so these prices are understated.`
+          : "Confirm the targets before quoting.")));
+}
+
 function renderLivePanel(result) {
   const summary = result.summary;
   const manufacturing = result.manufacturing;
@@ -435,13 +567,7 @@ function renderLivePanel(result) {
   const blocking = result.flags.filter((flag) => flag.severity === "blocking");
 
   mount(panel,
-    el("div", {class: "headline"},
-      el("div", {class: "label"}, "Cost per bottle · Accepted lines only"),
-      el("div", {class: "value"}, money(summary.primary_per_bottle)),
-      el("div", {class: "range"}, `${money(summary.low_per_bottle)} – ${money(summary.high_per_bottle)}`),
-      el("div", {style: "margin-top:8px"},
-        badge(`${summary.quote_confidence} confidence`, confClass(summary.quote_confidence)))),
-
+    headline(summary),
     breakdownBars(summary),
     el("div", {class: "spacer"}),
 
@@ -471,6 +597,26 @@ function renderLivePanel(result) {
       el("dl", {class: "kv"}, summary.cost_drivers.slice(0, 5).flatMap((driver) => [
         el("dt", {}, driver.label),
         el("dd", {}, `${money(driver.cost_per_bottle)} · ${pct(driver.share_pct)}`)]))) : null,
+
+    result.pricing.length ? el("div", {},
+      el("div", {class: "spacer"}),
+      el("div", {class: "small muted", style: "margin-bottom:4px"}, "RECOMMENDED PRICE (REVIEW)"),
+      el("dl", {class: "kv"}, result.pricing.flatMap((item) => [
+        el("dt", {}, `${item.label} · ${item.target_margin_pct}%`),
+        el("dd", {}, money(item.price_per_bottle))]))) : null,
+
+    result.price_breaks.length ? el("div", {},
+      el("div", {class: "spacer"}),
+      el("div", {class: "small muted", style: "margin-bottom:4px"}, "VOLUME BREAKS"),
+      el("dl", {class: "kv"}, result.price_breaks.map((b) => [
+        el("dt", {}, `${num(b.volume_bottles)} bottles${b.is_quoted_volume ? " (quoted)" : ""}`),
+        el("dd", {}, money(b.primary_per_bottle))]).flat())) : null,
+
+    result.derivation_notes.length ? el("div", {},
+      el("div", {class: "spacer"}),
+      el("div", {class: "alert info"},
+        el("strong", {}, "Worked out automatically"),
+        el("ul", {}, result.derivation_notes.map((note) => el("li", {}, note))))) : null,
   );
 }
 
@@ -480,6 +626,7 @@ $("#generate-btn").addEventListener("click", async (event) => {
   const original = button.textContent;
   button.replaceChildren(el("span", {class: "spinner"}), document.createTextNode(" Generating…"));
   try {
+    await flushPreview();          // never generate from a payload the panel has not costed
     const result = await jsonPost("/api/quotes", payload());
     showResult(result);
   } catch (error) {
@@ -490,8 +637,21 @@ $("#generate-btn").addEventListener("click", async (event) => {
   }
 });
 
-$$("#product-form input, #product-form select").forEach((input) =>
-  input.addEventListener("change", schedulePreview));
+/* "change" alone fires only on blur, so a rep who types a volume and clicks
+ * Generate would have costed the previous value. "input" fires per keystroke. */
+$$("#product-form input, #product-form select").forEach((input) => {
+  const field = input.id.replace(/^p-/, "");
+  const touched = () => {
+    userEdited.add(field);
+    input.dataset.derived = "0";
+    input.closest("label")?.classList.remove("derived");
+    input.closest("label")?.querySelector(".auto-tag")?.remove();
+    if (!input.value.trim()) userEdited.delete(field);   // cleared: derive again
+    schedulePreview();
+  };
+  input.addEventListener("input", touched);
+  input.addEventListener("change", touched);
+});
 
 $("#ing-search").addEventListener("input", (event) => renderIngredientOptions(event.target.value));
 $("#pkg-search").addEventListener("input", (event) => renderPackagingOptions(event.target.value));
@@ -621,17 +781,14 @@ function showResult(result) {
         bomCard(result),
         packagingCard(result),
         manufacturingCard(manufacturing),
+        priceBreakCard(result.price_breaks),
         flagsCard(result)),
 
       el("div", {class: "sticky"},
         el("div", {class: "card"},
           el("h3", {}, "Cost summary"),
           el("div", {class: "body"},
-            el("div", {class: "headline"},
-              el("div", {class: "label"}, "Cost per bottle · Accepted lines only"),
-              el("div", {class: "value"}, money(summary.primary_per_bottle)),
-              el("div", {class: "range"}, `${money(summary.low_per_bottle)} – ${money(summary.high_per_bottle)}`),
-              el("div", {style: "margin-top:8px"}, badge(`${summary.quote_confidence} confidence`, confClass(summary.quote_confidence)))),
+            headline(summary),
             breakdownBars(summary),
             el("div", {class: "spacer"}),
             (summary.unmatched_count || summary.needs_review_count)
@@ -645,6 +802,7 @@ function showResult(result) {
             el("dl", {class: "kv"}, summary.cost_drivers.slice(0, 5).flatMap((driver) => [
               el("dt", {}, driver.label), el("dd", {}, `${money(driver.cost_per_bottle)} · ${pct(driver.share_pct)}`)])))),
 
+        pricingCard(result.pricing, summary),
         el("div", {class: "card"},
           el("h3", {}, "Download"),
           el("div", {class: "body"},
@@ -744,7 +902,13 @@ function manufacturingCard(manufacturing) {
             el("dt", {}, "Encapsulation $/bottle"), el("dd", {}, money4(manufacturing.encapsulation_per_bottle)),
             el("dt", {}, "Bottling $/bottle"), el("dd", {}, money4(manufacturing.bottling_per_bottle)),
             el("dt", {}, "Total $/bottle"), el("dd", {}, money(manufacturing.total_per_bottle)),
-            el("dt", {}, "Machine"), el("dd", {}, manufacturing.machine_assumed ? `${manufacturing.machine} (assumed)` : manufacturing.machine))
+            el("dt", {}, "Capsules in run"), el("dd", {}, num(manufacturing.total_capsules)),
+            el("dt", {}, "Machine"), el("dd", {},
+              `${manufacturing.machine}${manufacturing.bottling_line ? " + " + manufacturing.bottling_line : ""}` +
+              (manufacturing.machine_assumed ? " (selected)" : "")),
+            el("dt", {}, "Selection basis"), el("dd", {class: "small"}, manufacturing.machine_basis || "-"),
+            el("dt", {}, "Rates $/hr"), el("dd", {class: "small"},
+              `compound ${money(manufacturing.compounding_rate)} · encap ${money(manufacturing.encapsulation_rate)} · bottle ${money(manufacturing.bottling_rate)}`))
         : el("div", {class: "alert warn"}, manufacturing.reason)));
 }
 

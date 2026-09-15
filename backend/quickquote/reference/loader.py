@@ -65,6 +65,54 @@ class IdentityEntry:
     default_potency: float | None = None
     role: str = ""
     size_required: bool = False
+    units_per_container: float | None = None
+    notes: str = ""
+
+
+@dataclass(frozen=True)
+class Machine:
+    """An encapsulation work centre and the run band it covers."""
+
+    machine: str
+    work_centre: str
+    labor_rate_per_hour: float
+    overhead_rate_per_hour: float
+    capsules_per_hour: float
+    min_capsules: float
+    max_capsules: float | None
+    notes: str = ""
+
+    @property
+    def combined_rate(self) -> float:
+        return self.labor_rate_per_hour + self.overhead_rate_per_hour
+
+    def covers(self, capsules: float) -> bool:
+        if capsules < self.min_capsules:
+            return False
+        return self.max_capsules is None or capsules < self.max_capsules
+
+
+@dataclass(frozen=True)
+class WorkCentre:
+    """Labor and overhead for one production step."""
+
+    step: str
+    work_centre: str
+    labor_rate_per_hour: float
+    overhead_rate_per_hour: float
+
+    @property
+    def combined_rate(self) -> float:
+        return self.labor_rate_per_hour + self.overhead_rate_per_hour
+
+
+@dataclass(frozen=True)
+class PricingTarget:
+    """A channel's target margin. Margin = (price - cost) / price."""
+
+    channel: str
+    target_margin_pct: float
+    label: str
     notes: str = ""
 
 
@@ -103,12 +151,21 @@ class ReferenceData:
     packaging_identities: list[IdentityEntry] = field(default_factory=list)
     overage: dict[str, dict[str, float]] = field(default_factory=dict)
     capsule_fill: dict[str, float] = field(default_factory=dict)
+    capsule_volume: dict[str, float] = field(default_factory=dict)
     potency: dict[str, float] = field(default_factory=dict)
     rates: dict[str, str] = field(default_factory=dict)
     guard_pairs: set[frozenset[str]] = field(default_factory=set)
     guard_reasons: dict[frozenset[str], str] = field(default_factory=dict)
     po_rows: list[PoRow] = field(default_factory=list)
+    machines: list[Machine] = field(default_factory=list)
+    work_centres: dict[str, WorkCentre] = field(default_factory=dict)
+    bulk_density: dict[str, float] = field(default_factory=dict)
+    pricing: list[PricingTarget] = field(default_factory=list)
     source_dir: Path = REFERENCE_DATA_DIR
+    # Populated on first use by the matching engine: canonical identity ->
+    # the PO rows that resolve to it. Resolving every row against every alias
+    # for every line is what made matching quadratic.
+    identity_index: dict | None = field(default=None, repr=False, compare=False)
 
     # -- rate helpers -------------------------------------------------
     def rate(self, key: str, default: float) -> float:
@@ -156,6 +213,80 @@ class ReferenceData:
     @property
     def default_machine(self) -> str:
         return self.text_rate("default_machine", "BOSCH 705 + CVC1")
+
+    @property
+    def component_loss_factor(self) -> float:
+        return self.rate("component_loss_factor", 1.0)
+
+    @property
+    def stale_po_warn_days(self) -> int:
+        return int(self.rate("stale_po_warn_days", 182))
+
+    @property
+    def use_work_centre_rates(self) -> bool:
+        return self.rate("use_work_centre_rates", 0) >= 1
+
+    @property
+    def bottle_fill_ratio(self) -> float:
+        return self.rate("bottle_fill_ratio", 0.80)
+
+    @property
+    def underfill_threshold(self) -> float:
+        return self.rate("underfill_threshold", 0.55)
+
+    @property
+    def near_capacity_threshold(self) -> float:
+        return self.rate("near_capacity_threshold", 0.90)
+
+    @property
+    def volume_breaks(self) -> list[int]:
+        raw = self.rates.get("volume_breaks", "")
+        breaks = []
+        for part in str(raw).replace(",", ";").split(";"):
+            value = _to_float(part)
+            if value and value > 0:
+                breaks.append(int(value))
+        return sorted(set(breaks))
+
+    def step_rate(self, step: str) -> float:
+        """Combined labor + OH for a production step."""
+        if self.use_work_centre_rates:
+            centre = self.work_centres.get(step)
+            if centre is not None:
+                return centre.combined_rate
+        return self.combined_rate
+
+    def machine_for(self, capsules: float | None) -> Machine | None:
+        """The encapsulation work centre whose band covers this run."""
+        if capsules is None or not self.machines:
+            return None
+        for machine in self.machines:
+            if machine.covers(capsules):
+                return machine
+        return self.machines[-1]
+
+    def machine_by_name(self, name: str | None) -> Machine | None:
+        if not name:
+            return None
+        wanted = str(name).strip().lower()
+        for machine in self.machines:
+            if machine.machine.lower() == wanted or machine.work_centre.lower() == wanted:
+                return machine
+        return None
+
+    def density_for(self, identity: str | None, overage_class: str | None) -> tuple[float, bool]:
+        """Bulk density in g/mL, and whether the global default was applied."""
+        for key in (identity, overage_class):
+            if key:
+                found = self.bulk_density.get(str(key).strip().lower())
+                if found:
+                    return found, False
+        return self.bulk_density.get("default", 0.55), True
+
+    def capsule_volume_ml(self, capsule_size: str | None) -> float | None:
+        if not capsule_size:
+            return None
+        return self.capsule_volume.get(str(capsule_size).strip().lower())
 
     def compounding_hours(self, component_count: int) -> float:
         if component_count <= 1:
@@ -230,6 +361,7 @@ def _load_identities(rows: Iterable[dict[str, str]], packaging: bool) -> list[Id
                 default_potency=_to_float(row.get("default_potency")),
                 role=(row.get("role") or "").strip().lower(),
                 size_required=str(row.get("size_required", "")).strip() in {"1", "true", "yes"},
+                units_per_container=_to_float(row.get("units_per_container")),
                 notes=row.get("notes", ""),
             )
         )
@@ -272,6 +404,61 @@ def load_reference_data(directory: Path | None = None) -> ReferenceData:
         capacity = _to_float(row.get("mg_capacity"))
         if size and capacity is not None:
             data.capsule_fill[size] = capacity
+        volume = _to_float(row.get("volume_ml"))
+        if size and volume:
+            data.capsule_volume[size] = volume
+
+    for row in _read_csv(base / "machines.csv"):
+        name = (row.get("machine") or "").strip()
+        rate_l = _to_float(row.get("labor_rate_per_hour"))
+        rate_o = _to_float(row.get("overhead_rate_per_hour"))
+        speed = _to_float(row.get("capsules_per_hour"))
+        if not name or rate_l is None or rate_o is None or not speed:
+            continue
+        data.machines.append(
+            Machine(
+                machine=name,
+                work_centre=(row.get("work_centre") or name).strip(),
+                labor_rate_per_hour=rate_l,
+                overhead_rate_per_hour=rate_o,
+                capsules_per_hour=speed,
+                min_capsules=_to_float(row.get("min_capsules"), 0.0) or 0.0,
+                max_capsules=_to_float(row.get("max_capsules")),
+                notes=row.get("notes", ""),
+            )
+        )
+    data.machines.sort(key=lambda machine: machine.min_capsules)
+
+    for row in _read_csv(base / "work_centres.csv"):
+        step = (row.get("step") or "").strip().lower()
+        rate_l = _to_float(row.get("labor_rate_per_hour"))
+        rate_o = _to_float(row.get("overhead_rate_per_hour"))
+        if step and rate_l is not None and rate_o is not None:
+            data.work_centres[step] = WorkCentre(
+                step=step,
+                work_centre=(row.get("work_centre") or step).strip(),
+                labor_rate_per_hour=rate_l,
+                overhead_rate_per_hour=rate_o,
+            )
+
+    for row in _read_csv(base / "bulk_density.csv"):
+        key = (row.get("key") or "").strip().lower()
+        density = _to_float(row.get("bulk_density_g_ml"))
+        if key and density and density > 0:
+            data.bulk_density[key] = density
+
+    for row in _read_csv(base / "pricing.csv"):
+        channel = (row.get("channel") or "").strip().lower()
+        margin = _to_float(row.get("target_margin_pct"))
+        if channel and margin is not None:
+            data.pricing.append(
+                PricingTarget(
+                    channel=channel,
+                    target_margin_pct=margin,
+                    label=(row.get("label") or channel.title()).strip(),
+                    notes=row.get("notes", ""),
+                )
+            )
 
     for row in _read_csv(base / "potency.csv"):
         key = (row.get("key") or "").strip().upper()

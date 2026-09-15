@@ -1,17 +1,17 @@
-canonical,aliases,role,size_required,notes
-hdpe bottle white,hdpe bottle white|white hdpe bottle|hdpe packer bottle white|packer bottle white|white packer bottle|hdpe packer white|white round bottle,bottle,1,Size in cc must match exactly
-hdpe bottle black,hdpe bottle black|black hdpe bottle|hdpe packer bottle black|packer bottle black|black packer bottle|hdpe packer black,bottle,1,Size in cc must match exactly
-hdpe bottle amber,hdpe bottle amber|amber hdpe bottle|hdpe packer bottle amber|packer bottle amber|amber packer bottle|hdpe packer amber,bottle,1,Size in cc must match exactly
-pet bottle clear,pet bottle clear|clear pet bottle|pet packer bottle clear|pet packer clear|clear packer bottle,bottle,1,Size in cc must match exactly
-cr cap white,cr cap white|child resistant cap white|white cr cap|child resistant closure white|cr closure white,cap,1,Size in mm must match exactly
-cr cap black,cr cap black|child resistant cap black|black cr cap|child resistant closure black|cr closure black,cap,1,Size in mm must match exactly
-non cr cap white,non cr cap white|standard cap white|standard screw cap white|screw cap white|white screw cap,cap,1,Size in mm must match exactly
-pressure sensitive label,pressure sensitive label|pressure sensitive body label|ps label|bottle label|wrap label|body label|front and back label,label,0,
-shrink neckband,shrink neckband|neckband|neck band|tamper evident band|shrink band,neckband,0,
-induction seal liner,induction seal|induction liner|induction foil seal|foil seal liner|heat seal liner,seal,0,
-cotton coil,cotton coil|rayon coil|cotton filler|cotton insert,cotton,0,
-desiccant canister,desiccant canister|desiccant packet|desiccant cannister|silica gel packet|silica gel canister,desiccant,0,
-corrugated shipper,corrugated shipper|shipper carton|master case|corrugated case|shipping carton|corrugated carton,shipper,0,
-vegetable capsule shell,vegetable capsule|veggie capsule|vegetarian capsule|vcaps|hpmc capsule|plant capsule|vegetable capsule shell,capsule_shell,1,Capsule size must match exactly and never substitutes for gelatin
-gelatin capsule shell,gelatin capsule|gel capsule|bovine gelatin capsule|porcine gelatin capsule|gelatin capsule shell,capsule_shell,1,Capsule size must match exactly and never substitutes for vegetable
-scoop,dosing scoop|measuring scoop|cc scoop,scoop,0,
+canonical,aliases,role,size_required,units_per_container,notes
+hdpe bottle white,hdpe bottle white|white hdpe bottle|hdpe packer bottle white|packer bottle white|white packer bottle|hdpe packer white|white round bottle,bottle,1,,Size in cc must match exactly
+hdpe bottle black,hdpe bottle black|black hdpe bottle|hdpe packer bottle black|packer bottle black|black packer bottle|hdpe packer black,bottle,1,,Size in cc must match exactly
+hdpe bottle amber,hdpe bottle amber|amber hdpe bottle|hdpe packer bottle amber|packer bottle amber|amber packer bottle|hdpe packer amber,bottle,1,,Size in cc must match exactly
+pet bottle clear,pet bottle clear|clear pet bottle|pet packer bottle clear|pet packer clear|clear packer bottle,bottle,1,,Size in cc must match exactly
+cr cap white,cr cap white|child resistant cap white|white cr cap|child resistant closure white|cr closure white,cap,1,,Size in mm must match exactly
+cr cap black,cr cap black|child resistant cap black|black cr cap|child resistant closure black|cr closure black,cap,1,,Size in mm must match exactly
+non cr cap white,non cr cap white|standard cap white|standard screw cap white|screw cap white|white screw cap,cap,1,,Size in mm must match exactly
+pressure sensitive label,pressure sensitive label|pressure sensitive body label|ps label|bottle label|wrap label|body label|front and back label,label,0,,
+shrink neckband,shrink neckband|neckband|neck band|tamper evident band|shrink band,neckband,0,,
+induction seal liner,induction seal|induction liner|induction foil seal|foil seal liner|heat seal liner,seal,0,,
+cotton coil,cotton coil|rayon coil|cotton filler|cotton insert,cotton,0,,
+desiccant canister,desiccant canister|desiccant packet|desiccant cannister|silica gel packet|silica gel canister,desiccant,0,,
+corrugated shipper,corrugated shipper|shipper carton|master case|corrugated case|shipping carton|corrugated carton,shipper,0,12,
+vegetable capsule shell,vegetable capsule|veggie capsule|vegetarian capsule|vcaps|hpmc capsule|plant capsule|vegetable capsule shell,capsule_shell,1,,Capsule size must match exactly and never substitutes for gelatin
+gelatin capsule shell,gelatin capsule|gel capsule|bovine gelatin capsule|porcine gelatin capsule|gelatin capsule shell,capsule_shell,1,,Capsule size must match exactly and never substitutes for vegetable
+scoop,dosing scoop|measuring scoop|cc scoop,scoop,0,,

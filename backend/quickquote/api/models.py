@@ -15,6 +15,7 @@ class ProductIn(BaseModel):
     serving_size: str | None = None
     servings_per_bottle: int | None = Field(default=None, ge=1)
     count_per_bottle: int | None = Field(default=None, ge=1)
+    capsules_per_serving: int | None = Field(default=None, ge=1)
     annual_volume_bottles: int | None = Field(default=None, ge=1)
     moq: int | None = Field(default=None, ge=0)
     timeline: str | None = None
@@ -44,3 +45,6 @@ class QuoteIn(BaseModel):
     product: ProductIn = Field(default_factory=ProductIn)
     formula: list[FormulaLineIn] = Field(default_factory=list)
     packaging: list[PackagingLineIn] = Field(default_factory=list)
+    # When no packaging is supplied the system works one out from the product
+    # spec. Set false to quote the formula alone.
+    auto_packaging: bool = True

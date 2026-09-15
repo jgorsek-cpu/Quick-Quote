@@ -37,6 +37,7 @@ class ProductSpec:
     serving_size: str | None = None
     servings_per_bottle: int | None = None
     count_per_bottle: int | None = None
+    capsules_per_serving: int | None = None
     annual_volume_bottles: int | None = None
     moq: int | None = None
     timeline: str | None = None
@@ -44,6 +45,9 @@ class ProductSpec:
     mfg_loss_factor: float | None = None
     claims: list[str] = field(default_factory=list)
     testing: list[str] = field(default_factory=list)
+    # field name -> why the system filled it in. A rep's own value never
+    # appears here, so the interface can show exactly what was assumed.
+    derived: dict[str, str] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return _json_safe(asdict(self))
@@ -120,6 +124,7 @@ class CostedIngredient:
 
     name: str
     match: MatchResult
+    identity: str | None = None
     input_part_code: str | None = None
     claimed_mg: float | None = None
     potency: float | None = None
@@ -155,6 +160,7 @@ class CostedPackaging:
     match: MatchResult
     input_part_code: str | None = None
     qty_per_bottle: float | None = None
+    units_per_container: float | None = None
     unit_cost: float | None = None
     unit_cost_source: str = ""
     cost_per_bottle: float | None = None
@@ -196,8 +202,14 @@ class ManufacturingEstimate:
     bottling_per_bottle: float | None = None
     total_per_bottle: float = 0.0
     machine: str = ""
+    bottling_line: str = ""
     machine_assumed: bool = False
+    machine_basis: str = ""
     bottles_in_run: int | None = None
+    total_capsules: float | None = None
+    compounding_rate: float | None = None
+    encapsulation_rate: float | None = None
+    bottling_rate: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return _json_safe(asdict(self))
@@ -229,11 +241,45 @@ class CostSummary:
     unmatched_count: int = 0
     unmatched_items: list[str] = field(default_factory=list)
     needs_review_items: list[str] = field(default_factory=list)
+    excluded_count: int = 0
+    excluded_note: str = ""
     cost_drivers: list[CostDriver] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         payload = _json_safe(asdict(self))
         return payload
+
+
+@dataclass
+class PriceBreak:
+    """Cost per bottle at one volume on the ladder."""
+
+    volume_bottles: int
+    primary_per_bottle: float
+    raw_materials: float
+    packaging: float
+    manufacturing: float
+    machine: str
+    is_quoted_volume: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class PriceRecommendation:
+    """A suggested price for one channel. Requires Finance review."""
+
+    channel: str
+    label: str
+    target_margin_pct: float
+    price_per_bottle: float
+    margin_dollars: float
+    basis: str
+    notes: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
 
 
 @dataclass
@@ -248,6 +294,9 @@ class QuoteResult:
     manufacturing: ManufacturingEstimate = field(default_factory=ManufacturingEstimate)
     summary: CostSummary = field(default_factory=CostSummary)
     flags: list[Flag] = field(default_factory=list)
+    price_breaks: list[PriceBreak] = field(default_factory=list)
+    pricing: list[PriceRecommendation] = field(default_factory=list)
+    derivation_notes: list[str] = field(default_factory=list)
     reference_as_of: date | None = None
 
     @property
@@ -274,6 +323,9 @@ class QuoteResult:
             "manufacturing": self.manufacturing.to_dict(),
             "summary": self.summary.to_dict(),
             "flags": [flag.to_dict() for flag in self.flags],
+            "price_breaks": [item.to_dict() for item in self.price_breaks],
+            "pricing": [item.to_dict() for item in self.pricing],
+            "derivation_notes": list(self.derivation_notes),
             "flags_by_owner": {
                 owner: [flag.to_dict() for flag in flags]
                 for owner, flags in self.flags_by_owner().items()

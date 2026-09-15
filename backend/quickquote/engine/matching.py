@@ -13,6 +13,25 @@ from .identity import Resolution, guard_conflict, resolve_identity
 from .text import SizeSignature, extract_size
 
 
+def po_rows_by_identity(reference: ReferenceData, packaging: bool) -> dict[str, list[PoRow]]:
+    """Canonical identity -> the PO rows that resolve to it.
+
+    Built once per reference-data load. Without it every line re-resolved
+    every purchase-order row against every alias, which is what made a
+    seven-rung price ladder take seconds.
+    """
+    if reference.identity_index is None:
+        index: dict[bool, dict[str, list[PoRow]]] = {False: {}, True: {}}
+        for mode in (False, True):
+            for row in reference.po_rows:
+                resolution = resolve_identity(row.description, reference, packaging=mode)
+                if resolution is None or guard_conflict(reference, resolution):
+                    continue
+                index[mode].setdefault(resolution.canonical, []).append(row)
+        reference.identity_index = index
+    return reference.identity_index[packaging]
+
+
 def _result_from_po(row: PoRow, status: str, reason: str, method: str, **extra) -> MatchResult:
     return MatchResult(
         status=status,
@@ -91,17 +110,9 @@ def match_line(
     size_rejected: list[str] = []
     guard_rejected: list[str] = []
 
-    for row in reference.po_rows:
-        row_resolution = resolve_identity(row.description, reference, packaging=packaging)
-        if row_resolution is None:
-            continue
-        if row_resolution.canonical != resolution.canonical:
-            continue
-        if guard_conflict(reference, row_resolution):
-            guard_rejected.append(row.part_number)
-            continue
+    for row in po_rows_by_identity(reference, packaging).get(resolution.canonical, []):
         if size_required:
-            row_size = extract_size(row.description, role=row_resolution.role)
+            row_size = extract_size(row.description, role=resolution.role)
             if not row_size.covers(input_size):
                 size_rejected.append(f"{row.part_number} ({row_size.describe()})")
                 continue

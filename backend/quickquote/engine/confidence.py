@@ -11,24 +11,31 @@ from ..schemas import CostedIngredient, CostedPackaging, MatchResult
 def line_confidence(match: MatchResult, reference: ReferenceData, as_of: date) -> str:
     """High / Medium / Low for a single line.
 
-    High    Accepted exact part-code match with a PO less than 365 days old.
-    Medium  Accepted identity match, or an Accepted exact match on a stale PO.
-    Low     anything not Accepted.
+    High    Accepted exact part-code match on a price under six months old.
+    Medium  Accepted identity match, or an exact match on a price between six
+            months and a year old.
+    Low     anything not Accepted, and any Accepted line whose price is over a
+            year old or has no date at all -- an unknown-age price is not a
+            confident one, however the line was matched.
+
+    Recency is weighted rather than applied as a single cliff, because a price
+    that has not been tested in a year is not evidence of today's cost.
     """
     if match.status != ACCEPTED:
         return LOW
 
-    exact = match.method.startswith("Tier 1")
-    stale_days = reference.stale_po_days
     age = None
     if match.latest_po_date is not None:
         age = (as_of - match.latest_po_date).days
 
-    if exact:
-        if age is not None and age < stale_days:
-            return HIGH
+    if age is None:
+        return LOW
+    if age > reference.stale_po_days:
+        return LOW
+    if age > reference.stale_po_warn_days:
         return MEDIUM
-    return MEDIUM
+
+    return HIGH if match.method.startswith("Tier 1") else MEDIUM
 
 
 def quote_confidence(

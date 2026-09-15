@@ -39,15 +39,35 @@ def _po_flags(
 
     if match.latest_po_date is not None:
         age = (as_of - match.latest_po_date).days
+        stamp = match.latest_po_date.isoformat()
         if age > reference.stale_po_days:
             flags.append(
                 Flag(
                     PURCHASING,
                     label,
                     f"Latest PO for {match.matched_code} is {age} days old "
-                    f"({match.latest_po_date.isoformat()}) - confirm current pricing.",
+                    f"({stamp}) - price is over a year old, confirm before quoting.",
+                    "blocking",
                 )
             )
+        elif age > reference.stale_po_warn_days:
+            flags.append(
+                Flag(
+                    PURCHASING,
+                    label,
+                    f"Latest PO for {match.matched_code} is {age} days old "
+                    f"({stamp}) - over six months, confirm current pricing.",
+                )
+            )
+    else:
+        flags.append(
+            Flag(
+                PURCHASING,
+                label,
+                f"No purchase-order date on record for {match.matched_code} - "
+                "the age of this price is unknown.",
+            )
+        )
 
     low, high = match.min_unit_cost_ever, match.max_unit_cost_ever
     latest = match.latest_unit_cost
@@ -72,6 +92,23 @@ def _po_flags(
             )
         )
     return flags
+
+
+def _smaller_shell(
+    reference: ReferenceData, needed_ml: float, current_size: str | None
+) -> str | None:
+    """The smallest stocked shell that still holds this fill, if smaller."""
+    current = reference.capsule_volume_ml(current_size)
+    if current is None:
+        return None
+    candidates = [
+        (volume, size)
+        for size, volume in reference.capsule_volume.items()
+        if needed_ml <= volume * reference.near_capacity_threshold and volume < current
+    ]
+    if not candidates:
+        return None
+    return min(candidates)[1]
 
 
 def build_flags(
@@ -165,35 +202,73 @@ def build_flags(
             flags.append(Flag(RND, line.name, "No claimed mg per serving - cost could not be computed.", "blocking"))
 
     # -- Operations / R&D: capsule fill --------------------------------
-    capacity = reference.capsule_capacity_mg(product.capsule_size)
-    total_fill = sum(line.formula_mg_per_serving or 0.0 for line in ingredients)
-    if capacity and total_fill:
-        caps_per_serving = 1
-        if product.count_per_bottle and product.servings_per_bottle:
-            caps_per_serving = max(1, round(product.count_per_bottle / product.servings_per_bottle))
-        fill_per_capsule = total_fill / caps_per_serving
-        utilisation = fill_per_capsule / capacity
+    # Fill is a volume question, not a weight one: 500mg of silicon dioxide
+    # and 500mg of magnesium oxide occupy very different space. Each material
+    # contributes its own bulk volume.
+    capsule_size = product.capsule_size
+    shell_ml = reference.capsule_volume_ml(capsule_size)
+    caps_per_serving = product.capsules_per_serving or 1
+    if product.count_per_bottle and product.servings_per_bottle and not product.capsules_per_serving:
+        caps_per_serving = max(1, round(product.count_per_bottle / product.servings_per_bottle))
+
+    fill_ml = 0.0
+    density_defaulted: list[str] = []
+    for line in ingredients:
+        milligrams = line.formula_mg_per_serving
+        if not milligrams:
+            continue
+        density, defaulted = reference.density_for(line.identity, line.overage_class)
+        if defaulted:
+            density_defaulted.append(line.name)
+        fill_ml += (milligrams / 1000.0) / density
+
+    for name in density_defaulted:
+        flags.append(
+            Flag(
+                RND,
+                name,
+                f"Bulk density not on file - the reference default "
+                f"({reference.bulk_density.get('default', 0.55)} g/mL) was used for the "
+                "fill check. Confirm the true density.",
+            )
+        )
+
+    if shell_ml and fill_ml:
+        per_capsule_ml = fill_ml / caps_per_serving
+        utilisation = per_capsule_ml / shell_ml
+        detail = (
+            f"{per_capsule_ml:.3f} mL per capsule against {shell_ml:.2f} mL of "
+            f"size {capsule_size} shell ({utilisation:.0%})"
+        )
         if utilisation > 1.0:
             message = (
-                f"Fill weight {fill_per_capsule:,.0f} mg per capsule exceeds the "
-                f"{capacity:,.0f} mg capacity of size {product.capsule_size} "
-                f"({utilisation:.0%}) - reformulation or a larger capsule is required."
+                f"Fill volume exceeds the shell: {detail}. A larger capsule, more "
+                "capsules per serving, or reformulation is required."
             )
             flags.append(Flag(RND, "Capsule fill", message, "blocking"))
             flags.append(Flag(OPERATIONS, "Capsule fill", message, "blocking"))
-        elif utilisation > 0.90:
-            message = (
-                f"Fill weight {fill_per_capsule:,.0f} mg per capsule is {utilisation:.0%} "
-                f"of the {capacity:,.0f} mg capacity of size {product.capsule_size} - "
-                "near capacity, confirm density."
-            )
+        elif utilisation > reference.near_capacity_threshold:
+            message = f"Fill is near shell capacity: {detail}. Confirm on a trial run."
             flags.append(Flag(RND, "Capsule fill", message))
             flags.append(Flag(OPERATIONS, "Capsule fill", message))
+        elif utilisation < reference.underfill_threshold:
+            smaller = _smaller_shell(reference, per_capsule_ml, capsule_size)
+            message = f"Capsule is over-sized for the fill: {detail}."
+            if smaller:
+                message += (
+                    f" Size {smaller} would hold it and costs less per thousand - "
+                    "confirm with R&D and Purchasing."
+                )
+            flags.append(Flag(RND, "Capsule fill", message))
 
     # -- Operations ---------------------------------------------------
     if manufacturing.machine_assumed:
+        basis = manufacturing.machine_basis or "default assumption"
+        line = manufacturing.bottling_line
+        assumed = f"{manufacturing.machine} + {line}" if line else manufacturing.machine
         flags.append(
-            Flag(OPERATIONS, "Machine", f"Machine not specified - assumed {manufacturing.machine}.")
+            Flag(OPERATIONS, "Machine",
+                 f"Machine not specified - assumed {assumed} ({basis}).")
         )
     if not manufacturing.estimated:
         flags.append(Flag(OPERATIONS, "Volume", manufacturing.reason, "blocking"))
@@ -254,8 +329,15 @@ def build_flags(
             )
         )
 
+    # Fields with their own dedicated flag above are not repeated here, so
+    # "MOQ not specified" is one item rather than two.
+    already_flagged = {flag.item.strip().lower() for flag in flags}
     for field_name in missing_fields:
-        flags.append(Flag(SALES, "Missing field", f"'{field_name}' was not present in the source document."))
+        if field_name.strip().lower() in already_flagged:
+            continue
+        flags.append(
+            Flag(SALES, field_name, f"Not present in the source document.")
+        )
 
     return _dedupe(flags)
 

@@ -152,6 +152,14 @@ def _product_summary(book: Workbook, result: QuoteResult) -> None:
     else:
         row = _kv(sheet, row, "None", "Every expected field was present.")
 
+    if result.product.derived:
+        row += 1
+        row = _section(sheet, row, "Worked out automatically", 4)
+        for name, basis in result.product.derived.items():
+            sheet.cell(row=row, column=1, value=f"   - {name.replace('_', ' ')}")
+            sheet.cell(row=row, column=2, value=basis).font = SMALL
+            row += 1
+
     if result.parsed.parser_notes:
         row += 1
         row = _section(sheet, row, "Parser notes", 4)
@@ -239,7 +247,7 @@ def _bom(book: Workbook, result: QuoteResult) -> None:
 PKG_HEADERS = [
     "Role", "Description", "Match Status", "Match Reason", "Input Part Code",
     "Matched Code", "PO Description", "Match Method", "Qty/Bottle",
-    "Latest Unit Cost", "Latest PO Date", "Vendor", "Min Cost Ever", "Max Cost Ever",
+    "Bottles per Purchased Unit", "Latest Unit Cost", "Latest PO Date", "Vendor", "Min Cost Ever", "Max Cost Ever",
     "Cost/Bottle (Primary)", "Cost/Bottle (Low -10%)", "Cost/Bottle (High +10%)",
     "Confidence", "Notes",
 ]
@@ -249,7 +257,7 @@ def _packaging(book: Workbook, result: QuoteResult) -> None:
     sheet = book.create_sheet("Packaging")
     _title(sheet, "PACKAGING", len(PKG_HEADERS))
     _header_row(sheet, 3, PKG_HEADERS)
-    _widths(sheet, [16, 36, 14, 52, 14, 13, 40, 34, 12, 16, 14, 20, 13, 13,
+    _widths(sheet, [16, 36, 14, 52, 14, 13, 40, 34, 12, 14, 16, 14, 20, 13, 13,
                     18, 18, 18, 12, 50])
 
     row = 4
@@ -259,6 +267,7 @@ def _packaging(book: Workbook, result: QuoteResult) -> None:
             line.role.replace("_", " ").title(), line.description, match.status,
             match.reason, _dash(line.input_part_code), _dash(match.matched_code),
             _dash(match.po_description), match.method, line.qty_per_bottle,
+            _dash(line.units_per_container),
             _money_or_excluded(line, line.unit_cost),
             match.latest_po_date.isoformat() if match.latest_po_date else "-",
             _dash(match.vendor),
@@ -272,12 +281,12 @@ def _packaging(book: Workbook, result: QuoteResult) -> None:
         for column, value in enumerate(values, start=1):
             cell = sheet.cell(row=row, column=column, value=value)
             cell.border = BORDER
-            cell.alignment = Alignment(wrap_text=column in (4, 7, 8, 19), vertical="top")
+            cell.alignment = Alignment(wrap_text=column in (4, 7, 8, 20), vertical="top")
         sheet.cell(row=row, column=3).fill = STATUS_FILL.get(
             match.status, PatternFill("solid", fgColor=RED_FILL)
         )
-        sheet.cell(row=row, column=18).fill = CONFIDENCE_FILL.get(line.confidence, PatternFill())
-        for column in (10, 13, 14, 15, 16, 17):
+        sheet.cell(row=row, column=19).fill = CONFIDENCE_FILL.get(line.confidence, PatternFill())
+        for column in (11, 14, 15, 16, 17, 18):
             if isinstance(sheet.cell(row=row, column=column).value, (int, float)):
                 sheet.cell(row=row, column=column).number_format = MONEY
         row += 1
@@ -285,9 +294,9 @@ def _packaging(book: Workbook, result: QuoteResult) -> None:
     accepted = [line for line in result.packaging if line.match.accepted]
     sheet.cell(row=row, column=1, value=f"TOTAL - Accepted only ({len(accepted)} of {len(result.packaging)} lines)").font = BOLD
     for column, values in (
-        (15, [line.cost_per_bottle for line in accepted]),
-        (16, [line.cost_low for line in accepted]),
-        (17, [line.cost_high for line in accepted]),
+        (16, [line.cost_per_bottle for line in accepted]),
+        (17, [line.cost_low for line in accepted]),
+        (18, [line.cost_high for line in accepted]),
     ):
         cell = sheet.cell(row=row, column=column, value=sum(v or 0.0 for v in values))
         cell.font = BOLD
@@ -308,8 +317,13 @@ def _cost_summary(book: Workbook, result: QuoteResult) -> None:
     row = 3
     row = _section(sheet, row, "Estimated cost per bottle (Accepted lines only)", 5)
     row = _kv(sheet, row, "Primary", summary.primary_per_bottle, MONEY2)
-    row = _kv(sheet, row, "Low (-10% on materials)", summary.low_per_bottle, MONEY2)
-    row = _kv(sheet, row, "High (+10% on materials)", summary.high_per_bottle, MONEY2)
+    row = _kv(sheet, row, "Worst case low (-10% materials)", summary.low_per_bottle, MONEY2)
+    row = _kv(sheet, row, "Worst case high (+10% materials)", summary.high_per_bottle, MONEY2)
+    if summary.excluded_note:
+        cell = sheet.cell(row=row, column=1, value=summary.excluded_note)
+        cell.font = Font(bold=True, color=RED)
+        cell.fill = PatternFill("solid", fgColor=RED_FILL)
+        row += 1
     confidence_row = row
     row = _kv(sheet, row, "Quote confidence", summary.quote_confidence)
     sheet.cell(row=confidence_row, column=2).fill = CONFIDENCE_FILL.get(
@@ -363,6 +377,48 @@ def _cost_summary(book: Workbook, result: QuoteResult) -> None:
         row += 1
     row += 1
 
+    if result.price_breaks:
+        row = _section(sheet, row, "Volume price breaks", 5)
+        _header_row(sheet, row, ["Bottles", "Cost/Bottle", "Raw Materials",
+                                 "Packaging", "Manufacturing"])
+        row += 1
+        for item in result.price_breaks:
+            sheet.cell(row=row, column=1, value=item.volume_bottles).number_format = "#,##0"
+            for column, value in ((2, item.primary_per_bottle), (3, item.raw_materials),
+                                  (4, item.packaging), (5, item.manufacturing)):
+                cell = sheet.cell(row=row, column=column, value=value)
+                cell.number_format = MONEY2
+            if item.is_quoted_volume:
+                for column in range(1, 6):
+                    sheet.cell(row=row, column=column).fill = PatternFill("solid", fgColor=LIGHT)
+                    sheet.cell(row=row, column=column).font = BOLD
+            row += 1
+        sheet.cell(row=row, column=1,
+                   value="Material cost per bottle is flat across the ladder: PO history "
+                         "carries no volume-tiered pricing.").font = SMALL
+        row += 2
+
+    if result.pricing:
+        row = _section(sheet, row, "Recommended price - requires Sales and Finance review", 5)
+        _header_row(sheet, row, ["Channel", "Target Margin", "Price/Bottle",
+                                 "Margin/Bottle", "Basis"])
+        row += 1
+        for item in result.pricing:
+            sheet.cell(row=row, column=1, value=item.label)
+            sheet.cell(row=row, column=2, value=item.target_margin_pct / 100.0).number_format = PCT
+            sheet.cell(row=row, column=3, value=item.price_per_bottle).number_format = MONEY2
+            sheet.cell(row=row, column=4, value=item.margin_dollars).number_format = MONEY2
+            cell = sheet.cell(row=row, column=5, value=item.basis)
+            cell.alignment = Alignment(wrap_text=True, vertical="top")
+            row += 1
+        warning = sheet.cell(
+            row=row, column=1,
+            value="Margin targets are configured reference data, not a Finance decision. "
+                  "Quick Quote does not set final pricing, margin or customer-facing terms.")
+        warning.font = Font(bold=True, color=RED)
+        warning.fill = PatternFill("solid", fgColor=AMBER_FILL)
+        row += 2
+
     row = _section(sheet, row, "Manufacturing detail", 5)
     if manufacturing.estimated:
         row = _kv(sheet, row, "Components in formula", manufacturing.component_count)
@@ -371,8 +427,12 @@ def _cost_summary(book: Workbook, result: QuoteResult) -> None:
         row = _kv(sheet, row, "Compounding $/bottle", manufacturing.compounding_per_bottle, MONEY)
         row = _kv(sheet, row, "Encapsulation $/bottle", manufacturing.encapsulation_per_bottle, MONEY)
         row = _kv(sheet, row, "Bottling $/bottle", manufacturing.bottling_per_bottle, MONEY)
-        row = _kv(sheet, row, "Machine assumption", manufacturing.machine +
-                  (" (assumed)" if manufacturing.machine_assumed else ""))
+        row = _kv(sheet, row, "Capsules in run", manufacturing.total_capsules)
+        row = _kv(sheet, row, "Machine assumption",
+                  f"{manufacturing.machine}"
+                  + (f" + {manufacturing.bottling_line}" if manufacturing.bottling_line else "")
+                  + (" (selected)" if manufacturing.machine_assumed else ""))
+        row = _kv(sheet, row, "Machine selection basis", manufacturing.machine_basis)
         row = _kv(sheet, row, "Basis", manufacturing.reason)
     else:
         cell = sheet.cell(row=row, column=1, value=f"Not estimated - {manufacturing.reason}")

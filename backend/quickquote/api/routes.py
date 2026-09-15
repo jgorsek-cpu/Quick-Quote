@@ -57,9 +57,11 @@ def reference_reload() -> dict:
 
 # --------------------------------------------------------------- quotes
 
-def _finalise(parsed: ParsedQuote) -> QuoteResult:
+def _finalise(parsed: ParsedQuote, auto_packaging: bool = True) -> QuoteResult:
     """Run the pipeline, store the result and persist its artifacts."""
-    result = run_pipeline(parsed, get_reference_data(), as_of=date.today())
+    result = run_pipeline(
+        parsed, get_reference_data(), as_of=date.today(), auto_packaging=auto_packaging
+    )
     store = get_store()
     store.add(result)
     store.write_artifact(result.quote_id, ".xlsx", build_workbook(result))
@@ -151,7 +153,8 @@ def preview_quote(payload: QuoteIn) -> dict:
             detail="A quote needs at least one ingredient or packaging component.",
         )
     result = run_pipeline(
-        _parsed_from_payload(payload), get_reference_data(), as_of=date.today()
+        _parsed_from_payload(payload), get_reference_data(), as_of=date.today(),
+        auto_packaging=payload.auto_packaging,
     )
     return result.to_dict()
 
@@ -164,7 +167,7 @@ def create_quote(payload: QuoteIn) -> dict:
             status_code=400,
             detail="A quote needs at least one ingredient or packaging component.",
         )
-    return _finalise(_parsed_from_payload(payload)).to_dict()
+    return _finalise(_parsed_from_payload(payload), payload.auto_packaging).to_dict()
 
 
 @router.get("/quotes")

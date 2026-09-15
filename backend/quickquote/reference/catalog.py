@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import date
 
 from ..config import ACCEPTED, NEEDS_REVIEW, UNMATCHED
-from ..engine.identity import resolve_identity
+from ..engine.matching import po_rows_by_identity
 from ..engine.text import extract_size
 from .loader import ReferenceData
 
@@ -30,12 +30,7 @@ def display_name(canonical: str) -> str:
 
 
 def _po_rows_for(canonical: str, reference: ReferenceData, packaging: bool) -> list:
-    rows = []
-    for row in reference.po_rows:
-        resolution = resolve_identity(row.description, reference, packaging=packaging)
-        if resolution and resolution.canonical == canonical:
-            rows.append(row)
-    return rows
+    return po_rows_by_identity(reference, packaging).get(canonical, [])
 
 
 def _status_for(count: int) -> str:

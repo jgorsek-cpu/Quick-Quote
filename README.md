@@ -38,6 +38,75 @@ never an estimate.
 
 ---
 
+## What the system works out for you
+
+A rep supplies the formula and the commercial terms. Everything below is
+derived, shown in the field it belongs to with an `auto` tag, and **overridden
+by typing over it**. Clearing an override hands the field back to the system.
+
+| Derived | From |
+|---|---|
+| Capsules per serving, servings per bottle, count per bottle | any two give the third |
+| Serving size text | capsules per serving |
+| Capsule shell | the product's capsule size and material, matched exactly |
+| Bottle | capsule volume x count / fill ratio, then the smallest **stocked** size that holds it |
+| Closure | the chosen bottle's neck finish, matched exactly |
+| Label, neckband, cotton, desiccant, shipper | the single stocked option for each |
+| Encapsulation machine | total capsules in the run against the machine table's bands |
+
+Nothing here invents reference data. A bottle is only ever chosen from a size
+with purchase-order history, and a machine from a band in the machine table.
+Where several options share an identity the system refuses to pick and says so,
+because choosing between grades is Purchasing's call.
+
+### Machine selection and work-centre rates
+
+Each production step is costed at its own work centre's rate rather than one
+blended rate:
+
+| Step | Rate from |
+|---|---|
+| Compounding | the blend work centre |
+| Encapsulation | the selected machine, with hours from its run rate |
+| Bottling | the packaging line |
+
+The machine follows the size of the run, using the thresholds from the
+operational price sheet:
+
+| Capsules in run | Machine |
+|---|---|
+| under 100,000 | Schaefer |
+| 100,000 – 400,000 | BOSCH 705 |
+| 400,000 – 2,000,000 | BOSCH 1505 |
+| 2,000,000 and above | BOSCH 3005 |
+
+### Volume price breaks
+
+Every quote is costed across the volume ladder, each rung a full pipeline run,
+so per-batch cost amortises properly and the machine changes with the run size.
+
+**Material cost per bottle is flat across the ladder.** Purchase-order history
+carries no volume-tiered pricing, so a discount curve would be invented data.
+What moves is labour, overhead and the machine.
+
+### Recommended price
+
+A suggested price per channel from its target margin, where
+`margin = (price - cost) / price`:
+
+```
+contract   20%   ->  price = cost / 0.80
+b2c        80%   ->  price = cost / 0.20
+```
+
+These are **recommendations for Sales and Finance**, labelled as such
+everywhere they appear. The margin targets in `pricing.csv` are configured
+defaults, not a Finance decision — set them before anyone quotes from them.
+When cost excludes unresolved lines the recommendation says so, because a
+price built on an understated cost is understated too.
+
+---
+
 ## Running it
 
 ```bash
@@ -68,7 +137,7 @@ Tests:
 .venv/Scripts/python -m pytest          # Windows
 ```
 
-86 tests.
+134 tests.
 
 ---
 
@@ -216,7 +285,11 @@ Point the app at a different reference directory with
 | `overage.csv` | Overage % by class, multi- and single-ingredient |
 | `potency.csv` | Part code → potency factor |
 | `capsule_fill.csv` | Capsule size → mg capacity |
-| `labor_rates.csv` | Labor and OH rates, compounding bands, thresholds, defaults |
+| `labor_rates.csv` | Rates, compounding bands, thresholds, defaults, volume ladder |
+| `machines.csv` | Machine, work centre, labor/OH, run rate, capsule band |
+| `work_centres.csv` | Labor and OH for compounding and bottling |
+| `bulk_density.csv` | Bulk density by identity, then by class, for the fill check |
+| `pricing.csv` | Target margin per sales channel |
 
 `uom` extends the specified PO export format (`KG`, `EA`, `M` for per-thousand).
 It is optional and inferred when absent, and it is what lets capsule shells be
@@ -252,11 +325,13 @@ backend/quickquote/
   parsing/     readers (xlsx/pdf/docx/txt/csv) · extract · router
   output/      workbook (six tabs) · pdf
   reference/   loader · catalog · ingest · seed · data/*.csv
+               (matching builds a canonical-identity index over PO rows on
+                first use; without it a seven-rung price ladder took seconds)
   api/         app · routes · models
   schemas.py   the one shape every producer feeds and every consumer reads
   store.py     quote registry and artifacts
 frontend/      index.html · static/app.js · static/styles.css
-tests/         86 tests
+tests/         134 tests
 samples/       demo quote sheets and generated artifacts
 ```
 
@@ -268,10 +343,21 @@ samples/       demo quote sheets and generated artifacts
 - **Manufacturing covers compounding, encapsulation and bottling.** The
   operational price sheet also carries tariffs, freight, remnants, testing by
   ingredient count and customer-specific deductions; those are not modelled here.
-- **Labor and OH are single rates.** The operational `2026 labOH rates` table is
-  per work centre (Blend, 705, 1505, 3005, Schaefer, Tablet press …). The shipped
-  default is the Blend rate ($29.39 labor / $79.30 OH), matching the
-  specification.
+- **Machine run rates are placeholders.** The capsules-per-hour figures in
+  `machines.csv` are scaled from the one rate that reproduces the
+  specification's worked example. Replace them from the `CVC run rates`
+  sheet before the manufacturing figure is trusted; the selection bands and
+  the labor/OH rates are real.
+- **Manufacturing no longer matches the specification's illustration.** The
+  spec example assumes one blended labor/OH pair ($29.39 / $79.30); the
+  shipped default costs each step at its own work centre, which is what the
+  `2026 labOH rates` table describes. Set `use_work_centre_rates` to `0` in
+  `labor_rates.csv` to return to the blended pair — the test suite asserts the
+  example reproduces to the cent under that setting.
+- **The +/-10% range is a worst case, not a distribution.** Every cost-bearing
+  line carries the same band, so summing them assumes every input moves the
+  same way at once. It is labelled "worst case" rather than treated as a
+  confidence interval.
 - **Quotes are held in memory** for the life of the process; artifacts are
   written to disk so they survive a restart.
 - **No authentication.** Intended to run inside the network.

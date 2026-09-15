@@ -1,12 +1,17 @@
-"""Orchestration: parse -> match -> cost -> flag -> confidence-score.
+"""Orchestration: derive -> parse -> match -> cost -> flag -> confidence-score.
 
 Every step is deterministic. Nothing in this module consults a model, and no
 cost, match decision, confidence level or flag is ever produced from anything
 but the reference tables and the parsed input.
+
+This is the one cost path. The live estimate in the interface and the
+generated quote package both run ``run_pipeline``; there is no second,
+lighter calculation anywhere.
 """
 from __future__ import annotations
 
 import uuid
+from copy import deepcopy
 from datetime import date, datetime
 
 from ..config import ACCEPTED, NEEDS_REVIEW, UNMATCHED
@@ -16,13 +21,16 @@ from ..schemas import (
     CostSummary,
     CostedIngredient,
     CostedPackaging,
-    ParsedQuote,
     PackagingLine,
+    ParsedQuote,
+    PriceBreak,
+    PriceRecommendation,
     QuoteResult,
 )
 from .classify import classify_ingredient
 from .confidence import line_confidence, quote_confidence
 from .costing import cost_ingredient, cost_packaging
+from .derive import derive_packaging, derive_serving, total_capsules
 from .flags import build_flags
 from .identity import resolve_identity
 from .manufacturing import estimate_manufacturing
@@ -33,18 +41,31 @@ from .text import SizeSignature, extract_size, normalise_capsule_size
 _UNIT_ROLES = {"bottle", "cap", "label", "neckband", "cotton", "desiccant", "seal", "scoop"}
 
 
-def _packaging_qty(line: PackagingLine, parsed: ParsedQuote) -> float | None:
-    """Resolve quantity per bottle for a packaging component."""
+def _packaging_qty(line: PackagingLine, parsed: ParsedQuote, reference: ReferenceData):
+    """Resolve quantity per bottle for a packaging component.
+
+    Capsule shells carry the component loss factor: a run breaks and wastes
+    shells on setup, so a 60-count bottle consumes more than 60 shells.
+    """
     if line.qty_per_bottle is not None:
         return line.qty_per_bottle
     role = (line.role or "").strip().lower()
     if role == "capsule_shell":
-        return parsed.product.count_per_bottle
-    if role == "shipper":
-        return None
+        if not parsed.product.count_per_bottle:
+            return None
+        return parsed.product.count_per_bottle * reference.component_loss_factor
     if role in _UNIT_ROLES:
         return 1.0
+    # A shipper is one carton per pack-out, spread over the bottles it holds.
     return 1.0
+
+
+def _units_per_container(line: PackagingLine, reference: ReferenceData) -> float | None:
+    """How many bottles one purchased unit packs out."""
+    resolution = resolve_identity(line.description, reference, packaging=True)
+    if resolution is None:
+        return None
+    return resolution.entry.units_per_container
 
 
 def _size_hint(line: PackagingLine, parsed: ParsedQuote) -> SizeSignature | None:
@@ -89,11 +110,20 @@ def run_pipeline(
     reference: ReferenceData | None = None,
     as_of: date | None = None,
     quote_id: str | None = None,
+    auto_packaging: bool = True,
+    with_price_breaks: bool = True,
 ) -> QuoteResult:
     """Turn a parsed quote into a complete review-ready quote package."""
     reference = reference or get_reference_data()
     as_of = as_of or date.today()
     product = parsed.product
+
+    derivation_notes = derive_serving(product)
+
+    if auto_packaging and not parsed.packaging:
+        added, notes = derive_packaging(product, parsed.packaging, reference)
+        parsed.packaging.extend(added)
+        derivation_notes.extend(notes)
 
     mfg_loss = product.mfg_loss_factor or reference.mfg_loss_factor
     multi_ingredient = len(parsed.formula) > 1
@@ -122,6 +152,7 @@ def run_pipeline(
         costed = cost_ingredient(
             line, match, classification, reference, product.servings_per_bottle, mfg_loss
         )
+        costed.identity = resolution.canonical if resolution else None
         if conflict:
             costed.notes.append(conflict)
         costed.confidence = line_confidence(match, reference, as_of)
@@ -138,27 +169,31 @@ def run_pipeline(
             packaging=True,
             size_hint=_size_hint(line, parsed),
         )
-        costed = cost_packaging(line, match, reference, _packaging_qty(line, parsed))
+        costed = cost_packaging(
+            line,
+            match,
+            reference,
+            _packaging_qty(line, parsed, reference),
+            _units_per_container(line, reference),
+        )
         costed.confidence = line_confidence(match, reference, as_of)
         packaging.append(costed)
 
     # -- manufacturing -------------------------------------------------
-    manufacturing = estimate_manufacturing(product, len(parsed.formula), reference)
+    manufacturing, machine_notes = estimate_manufacturing(
+        product, len(parsed.formula), reference
+    )
+    derivation_notes.extend(machine_notes)
 
     # -- roll-up -------------------------------------------------------
     summary = _summarise(ingredients, packaging, manufacturing, reference)
-
-    for line in ingredients:
-        line.confidence = line_confidence(line.match, reference, as_of)
-    for line in packaging:
-        line.confidence = line_confidence(line.match, reference, as_of)
     summary.quote_confidence = quote_confidence(ingredients, packaging, reference)
 
     flags = build_flags(
         product, ingredients, packaging, manufacturing, reference, as_of, parsed.missing_fields
     )
 
-    return QuoteResult(
+    result = QuoteResult(
         quote_id=quote_id or uuid.uuid4().hex[:12],
         created_at=datetime.now(),
         parsed=parsed,
@@ -167,9 +202,102 @@ def run_pipeline(
         manufacturing=manufacturing,
         summary=summary,
         flags=flags,
+        derivation_notes=derivation_notes,
         reference_as_of=as_of,
     )
+    result.pricing = build_pricing(summary, reference)
+    if with_price_breaks:
+        result.price_breaks = build_price_breaks(parsed, reference, as_of)
+    return result
 
+
+# ------------------------------------------------------- price breaks
+
+def build_price_breaks(
+    parsed: ParsedQuote, reference: ReferenceData, as_of: date
+) -> list[PriceBreak]:
+    """Cost the same formula across the volume ladder.
+
+    Each rung is a full pipeline run at that volume, so per-batch costs
+    amortise correctly and the machine can change with the run size. Material
+    cost per bottle does not move with volume here: purchase-order history
+    carries no volume-tiered pricing, so pretending it does would be invented
+    data.
+    """
+    quoted = parsed.product.annual_volume_bottles
+    volumes = sorted({*reference.volume_breaks, *( [quoted] if quoted else [] )})
+    if not volumes:
+        return []
+
+    breaks: list[PriceBreak] = []
+    for volume in volumes:
+        scenario = deepcopy(parsed)
+        scenario.product.annual_volume_bottles = volume
+        # Clear a machine the system chose (not one the rep typed) so each rung
+        # re-selects the work centre its own run size calls for.
+        if scenario.product.derived.pop("machine", None):
+            scenario.product.machine = None
+        run = run_pipeline(
+            scenario, reference, as_of=as_of,
+            auto_packaging=False, with_price_breaks=False,
+        )
+        breaks.append(
+            PriceBreak(
+                volume_bottles=volume,
+                primary_per_bottle=run.summary.primary_per_bottle,
+                raw_materials=run.summary.raw_materials,
+                packaging=run.summary.packaging,
+                manufacturing=run.summary.manufacturing,
+                machine=run.manufacturing.machine,
+                is_quoted_volume=(volume == quoted),
+            )
+        )
+    return breaks
+
+
+# ---------------------------------------------------------- pricing
+
+def build_pricing(summary: CostSummary, reference: ReferenceData) -> list[PriceRecommendation]:
+    """Suggest a price per channel from its target margin.
+
+    ``margin = (price - cost) / price``, so ``price = cost / (1 - margin)``.
+    These are recommendations for Sales and Finance to review. The system
+    does not set final pricing, margin or customer-facing terms.
+    """
+    cost = summary.primary_per_bottle
+    if cost <= 0:
+        return []
+
+    recommendations: list[PriceRecommendation] = []
+    for target in reference.pricing:
+        margin = target.target_margin_pct / 100.0
+        if margin >= 1.0:
+            continue
+        price = cost / (1 - margin)
+        basis = (
+            f"{target.target_margin_pct:g}% target margin on a "
+            f"${cost:,.4f}/bottle cost"
+        )
+        if summary.excluded_count:
+            basis += (
+                f"; cost excludes {summary.excluded_count} unresolved line(s), "
+                "so this price is understated"
+            )
+        recommendations.append(
+            PriceRecommendation(
+                channel=target.channel,
+                label=target.label,
+                target_margin_pct=target.target_margin_pct,
+                price_per_bottle=price,
+                margin_dollars=price - cost,
+                basis=basis,
+                notes=target.notes,
+            )
+        )
+    return recommendations
+
+
+# ------------------------------------------------------------ summary
 
 def _summarise(
     ingredients: list[CostedIngredient],
@@ -189,9 +317,9 @@ def _summarise(
     summary.manufacturing = manufacturing.total_per_bottle if manufacturing.estimated else 0.0
     summary.primary_per_bottle = summary.raw_materials + summary.packaging + summary.manufacturing
 
-    # The +/-10% band applies to PO-derived material and packaging cost.
-    # Manufacturing comes from labor and overhead rates, not PO history, so it
-    # carries no band and enters both ends of the range unchanged.
+    # Every cost-bearing line carries the same +/-10% band, so summing the
+    # per-line lows and highs gives a worst-case envelope in which every input
+    # moves the same way at once. It is not a statistical range.
     material_low = sum(
         line.cost_low or 0.0 for line in [*ingredients, *packaging] if line.match.accepted
     )
@@ -204,12 +332,30 @@ def _summarise(
     all_lines: list[CostedIngredient | CostedPackaging] = [*ingredients, *packaging]
     unmatched = [line for line in all_lines if line.match.status == UNMATCHED]
     review = [line for line in all_lines if line.match.status == NEEDS_REVIEW]
+    costless = [
+        line for line in all_lines
+        if line.match.status == ACCEPTED and line.cost_per_bottle is None
+    ]
 
     summary.unmatched_count = len(unmatched)
     summary.needs_review_count = len(review)
     summary.unmatched_items = [_label(line) for line in unmatched]
     summary.needs_review_items = [_label(line) for line in review]
     summary.tentative_exposure = sum(line.cost_per_bottle or 0.0 for line in review)
+
+    summary.excluded_count = len(unmatched) + len(review) + len(costless)
+    if summary.excluded_count:
+        parts = []
+        if unmatched:
+            parts.append(f"{len(unmatched)} unmatched")
+        if review:
+            parts.append(f"{len(review)} needing review")
+        if costless:
+            parts.append(f"{len(costless)} with no cost")
+        summary.excluded_note = (
+            f"{summary.excluded_count} line(s) excluded ({', '.join(parts)}) - "
+            "this total is understated"
+        )
 
     drivers: list[tuple[str, float]] = [
         (_label(line), line.cost_per_bottle)
