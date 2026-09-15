@@ -130,6 +130,7 @@ class PoRow:
     latest_vendor: str
     unique_vendor_count: int
     po_count: int
+    total_spend: float = 0.0
 
     @property
     def price_spread(self) -> float | None:
@@ -340,6 +341,19 @@ class ReferenceData:
         return None
 
 
+def is_component_part(row: PoRow) -> bool:
+    """True when a PO row is a packaging component rather than a raw material.
+
+    Unit of measure is the reliable signal: raw materials are bought by weight,
+    components each or per thousand. Capsule shells are priced per thousand and
+    are components, not ingredients -- reading that from the part prefix put
+    three of the highest-spend parts in the wrong queue.
+    """
+    if (row.uom or "").upper() in ("EA", "M"):
+        return True
+    return row.part_number.upper().startswith(("K", "PK"))
+
+
 def _load_identities(rows: Iterable[dict[str, str]], packaging: bool) -> list[IdentityEntry]:
     entries: list[IdentityEntry] = []
     for row in rows:
@@ -504,6 +518,7 @@ def load_po_history(path: Path) -> list[PoRow]:
                 latest_vendor=row.get("latest_vendor", ""),
                 unique_vendor_count=_to_int(row.get("unique_vendor_count"), 0) or 0,
                 po_count=_to_int(row.get("po_count"), 0) or 0,
+                total_spend=_to_float(row.get("total_spend"), 0.0) or 0.0,
             )
         )
     return rows

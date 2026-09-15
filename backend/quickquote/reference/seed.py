@@ -34,7 +34,13 @@ from ..engine.classify import classify_by_name
 from ..engine.identity import resolve_identity
 from ..engine.text import extract_size, spaced
 from ..parsing.extract import infer_role
-from .loader import PoRow, ReferenceData, load_po_history, load_reference_data
+from .loader import (
+    PoRow,
+    ReferenceData,
+    is_component_part,
+    load_po_history,
+    load_reference_data,
+)
 
 # Part-number prefixes used by the operational system, as a fallback when a
 # packaging description does not name its own role.
@@ -72,10 +78,6 @@ def role_for(part: str, description: str) -> str:
     return ""
 
 
-def _is_packaging(row: PoRow) -> bool:
-    return row.part_number.upper().startswith(("K", "PK")) or row.uom == "EA"
-
-
 def propose(
     po_rows: list[PoRow], reference: ReferenceData
 ) -> tuple[list[dict], list[dict], dict]:
@@ -96,7 +98,7 @@ def propose(
             stats["no_description"] += 1
             continue
 
-        is_packaging = _is_packaging(row)
+        is_packaging = is_component_part(row)
         if resolve_identity(row.description, reference, packaging=is_packaging):
             stats["already_resolved"] += 1
             continue

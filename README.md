@@ -137,7 +137,7 @@ Tests:
 .venv/Scripts/python -m pytest          # Windows
 ```
 
-141 tests.
+166 tests.
 
 ---
 
@@ -299,6 +299,36 @@ buyer's decision, not the system's.
 Point the app at a different reference directory with
 `QUICKQUOTE_REFERENCE_DIR=/path/to/data`.
 
+### Curating the proposals
+
+Nine hundred proposals is not nine hundred decisions. On the real catalogue
+**30 parts carry 80% of purchasing spend**, so the worksheet is ranked by spend
+with the cumulative share beside each row — fill in the shaded block at the top
+and the rest can wait.
+
+```bash
+PYTHONPATH=backend .venv/bin/python -m quickquote.reference.curate export \
+    --data-dir var/reference --out var/curation.xlsx
+# R&D, Purchasing, Operations and Finance fill in the amber cells
+PYTHONPATH=backend .venv/bin/python -m quickquote.reference.curate apply \
+    --data-dir var/reference --worksheet var/curation.xlsx
+curl -X POST http://localhost:8000/api/reference/reload
+```
+
+Four tabs, one per owner: **Ingredients** (overage class, potency, bulk
+density), **Packaging** (role, bottles per purchased unit), **Machines** (run
+rates), **Margins** (target margin).
+
+Two properties make it safe to hand round:
+
+- **A blank cell never clears a curated value**, and a cell left at the value
+  the export pre-filled is not treated as an answer. Re-applying an untouched
+  worksheet changes nothing.
+- **A stated standardisation is offered, never applied.** `TURMERIC EXT. 95%`
+  puts `0.95` in a *Suggested Potency* column with the text it came from. It
+  never lands in the potency column, because a suggestion a person accepts is
+  reference data and a suggestion applied silently is invented data.
+
 ### Reference tables
 
 | File | Holds |
@@ -356,7 +386,7 @@ backend/quickquote/
   schemas.py   the one shape every producer feeds and every consumer reads
   store.py     quote registry and artifacts
 frontend/      index.html · static/app.js · static/styles.css
-tests/         141 tests
+tests/         166 tests
 samples/       demo quote sheets and generated artifacts
 ```
 

@@ -278,6 +278,8 @@ def aggregate(
 
     for part, transactions in sorted(grouped.items()):
         costs = [cost for _, cost, _ in transactions]
+        total_qty = sum(qty for _, _, qty in transactions if qty)
+        total_spend = sum(cost * qty for _, cost, qty in transactions if qty)
         dated = [(when, cost) for when, cost, _ in transactions if when is not None]
         dated.sort(key=lambda item: item[0])
 
@@ -304,6 +306,10 @@ def aggregate(
             "latest_vendor": "",           # not present in the PO export
             "unique_vendor_count": "",     # not present in the PO export
             "po_count": str(len(transactions)),
+            # Spend ranks the curation queue: a handful of parts carry most of
+            # it, so R&D need not confirm a thousand rows to quote accurately.
+            "total_qty": f"{total_qty:.6g}",
+            "total_spend": f"{total_spend:.2f}",
         })
 
     report.parts_out = len(rows)
@@ -328,7 +334,7 @@ def _infer_uom(part: str, description: str) -> str:
 FIELDNAMES = [
     "part_number", "description", "uom", "latest_unit_cost", "min_unit_cost_ever",
     "max_unit_cost_ever", "latest_po_date", "latest_vendor", "unique_vendor_count",
-    "po_count",
+    "po_count", "total_qty", "total_spend",
 ]
 
 
