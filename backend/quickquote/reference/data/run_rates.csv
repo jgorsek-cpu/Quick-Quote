@@ -1,0 +1,9 @@
+work_centre,units_per_hour,unit,confirmed,notes
+705,16870,capsules,0,PLACEHOLDER scaled from one calibrated batch - confirm from the run rate sheet
+1505,36000,capsules,0,PLACEHOLDER - confirm
+3005,72000,capsules,0,PLACEHOLDER - confirm
+Schaefer,8000,capsules,0,PLACEHOLDER - confirm
+Pakrapid,2880,packets,0,Adjusted machine speed from the packrapit OH sheet at 40% OEE - confirm
+Tablet press,,tablets,0,Not on file - Operations to supply
+Chilsinator,,kg,0,Not on file - Operations to supply
+Powder Fill,,units,0,Not on file - Operations to supply

@@ -1,3 +1,16 @@
-step,work_centre,labor_rate_per_hour,overhead_rate_per_hour,notes
-compounding,Blend,29.392999999999997,79.30235237337898,Blending and compounding
-bottling,Packaging,26.51112448765249,109.41456456594833,Bottling and packaging line
+work_centre,labor_rate_per_hour,overhead_rate_per_hour,notes
+Blend,29.393,79.3024,From the 2026 labOH rates table
+705,27.755,83.941,From the 2026 labOH rates table
+1505,27.755,80.5513,From the 2026 labOH rates table
+3005,27.755,81.9072,From the 2026 labOH rates table
+Schaefer,27.755,76.1819,From the 2026 labOH rates table
+Tablet press,27.755,111.312,From the 2026 labOH rates table
+Chilsinator,27.755,76.1819,From the 2026 labOH rates table
+Pakrapid,26.5111,19.6431,From the 2026 labOH rates table
+Packaging,26.5111,109.415,From the 2026 labOH rates table
+Powder Fill,26.5111,111.588,From the 2026 labOH rates table
+Cleaning- blending,29.393,75.0827,From the 2026 labOH rates table
+Cleaning- Encap,27.755,75.0827,From the 2026 labOH rates table
+Cleaning - PakRapid,26.5111,19.6431,From the 2026 labOH rates table
+Cleaning-IPF,26.5111,75.0827,From the 2026 labOH rates table
+Cleaning- Packaging,26.5111,75.0827,From the 2026 labOH rates table

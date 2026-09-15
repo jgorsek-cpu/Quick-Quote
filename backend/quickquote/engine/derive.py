@@ -99,8 +99,18 @@ def derive_serving(product: ProductSpec) -> list[str]:
 def derive_machine(
     product: ProductSpec, reference: ReferenceData
 ) -> tuple[Machine | None, list[str]]:
-    """Select the encapsulation work centre from the size of the run."""
+    """Select the encapsulation work centre from the size of the run.
+
+    The machine table holds hard-capsule encapsulators. A softgel or gummy
+    line is not one of them, so nothing is selected for those forms rather
+    than a capsule machine's rate being applied to a process it cannot run.
+    """
     notes: list[str] = []
+
+    form = (product.dosage_form or "capsule").strip().lower()
+    if "capsule" not in form or "softgel" in form:
+        if not product.machine:
+            return None, notes
 
     named = reference.machine_by_name(product.machine)
     if named is not None:

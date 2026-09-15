@@ -94,16 +94,57 @@ class Machine:
 
 @dataclass(frozen=True)
 class WorkCentre:
-    """Labor and overhead for one production step."""
+    """Labor and overhead for one work centre."""
 
-    step: str
     work_centre: str
     labor_rate_per_hour: float
     overhead_rate_per_hour: float
+    notes: str = ""
 
     @property
     def combined_rate(self) -> float:
         return self.labor_rate_per_hour + self.overhead_rate_per_hour
+
+
+@dataclass(frozen=True)
+class RouteStep:
+    """One step of the process route for a dosage form."""
+
+    dosage_form: str
+    sequence: int
+    step: str
+    work_centre: str
+    basis: str
+    # A core step of the process. Cleaning is real cost but its absence does
+    # not invalidate an estimate; an uncosted press or fill step does.
+    critical: bool = True
+    notes: str = ""
+
+
+@dataclass(frozen=True)
+class RunRate:
+    """Throughput for a work centre, and whether anyone has confirmed it."""
+
+    work_centre: str
+    units_per_hour: float | None
+    unit: str
+    confirmed: bool
+    notes: str = ""
+
+
+@dataclass(frozen=True)
+class TestingBand:
+    """Testing cost by number of ingredients."""
+
+    min_ingredients: int
+    max_ingredients: int | None
+    batch_cost: float
+    per_unit_cost: float
+
+    def covers(self, count: int) -> bool:
+        if count < self.min_ingredients:
+            return False
+        return self.max_ingredients is None or count <= self.max_ingredients
 
 
 @dataclass(frozen=True)
@@ -160,6 +201,11 @@ class ReferenceData:
     po_rows: list[PoRow] = field(default_factory=list)
     machines: list[Machine] = field(default_factory=list)
     work_centres: dict[str, WorkCentre] = field(default_factory=dict)
+    routes: dict[str, list[RouteStep]] = field(default_factory=dict)
+    run_rates: dict[str, RunRate] = field(default_factory=dict)
+    cleaning_hours: dict[str, float | None] = field(default_factory=dict)
+    bottling_rates: list[dict] = field(default_factory=list)
+    testing_bands: list[TestingBand] = field(default_factory=list)
     bulk_density: dict[str, float] = field(default_factory=dict)
     pricing: list[PricingTarget] = field(default_factory=list)
     source_dir: Path = REFERENCE_DATA_DIR
@@ -249,13 +295,69 @@ class ReferenceData:
                 breaks.append(int(value))
         return sorted(set(breaks))
 
+    def centre_rate(self, work_centre: str | None) -> float | None:
+        """Combined labor + OH for a named work centre.
+
+        With ``use_work_centre_rates`` off, every step is costed at the single
+        blended pair the specification assumes, so a named centre still has to
+        exist but its own rate is not used.
+        """
+        if not work_centre:
+            return None
+        centre = self.work_centres.get(work_centre)
+        if centre is None:
+            return None
+        return centre.combined_rate if self.use_work_centre_rates else self.combined_rate
+
     def step_rate(self, step: str) -> float:
-        """Combined labor + OH for a production step."""
+        """Combined labor + OH for a legacy named step."""
         if self.use_work_centre_rates:
-            centre = self.work_centres.get(step)
+            legacy = {"compounding": "Blend", "bottling": "Packaging"}
+            centre = self.work_centres.get(legacy.get(step, step))
             if centre is not None:
                 return centre.combined_rate
         return self.combined_rate
+
+    def route_for(self, dosage_form: str | None) -> list[RouteStep]:
+        """The process route for a dosage form, or an empty list."""
+        key = (dosage_form or "capsule").strip().lower()
+        for name, steps in self.routes.items():
+            if key == name or name in key:
+                return steps
+        return []
+
+    def known_dosage_forms(self) -> list[str]:
+        return sorted(self.routes)
+
+    def testing_for(self, ingredient_count: int) -> TestingBand | None:
+        for band in self.testing_bands:
+            if band.covers(ingredient_count):
+                return band
+        return None
+
+    # Capsule sizes share a bottling-speed column on the CVC table.
+    _BOTTLING_SIZE_GROUPS = {
+        "000": "0/00", "00": "0/00", "0": "0/00",
+        "00el": "0EL/00EL", "0el": "0EL/00EL",
+        "1": "1", "2": "2", "3": "3", "4": "3",
+    }
+
+    def bottles_per_hour(self, count: int | None, capsule_size: str | None) -> float | None:
+        """Bottling line speed for this count and capsule size.
+
+        The line counts capsules into bottles, so a 500-count bottle runs far
+        slower than a 60-count. Rows are discrete, so the first row at or above
+        the requested count is used -- the slower, more conservative side.
+        """
+        if not self.bottling_rates or not count:
+            return None
+        group = self._BOTTLING_SIZE_GROUPS.get(
+            str(capsule_size or "0").strip().lower(), "0/00"
+        )
+        rows = sorted(self.bottling_rates, key=lambda row: row["count"])
+        chosen = next((row for row in rows if row["count"] >= count), rows[-1])
+        value = chosen.get(group)
+        return float(value) if value not in (None, "") else None
 
     def machine_for(self, capsules: float | None) -> Machine | None:
         """The encapsulation work centre whose band covers this run."""
@@ -444,16 +546,73 @@ def load_reference_data(directory: Path | None = None) -> ReferenceData:
     data.machines.sort(key=lambda machine: machine.min_capsules)
 
     for row in _read_csv(base / "work_centres.csv"):
-        step = (row.get("step") or "").strip().lower()
+        name = (row.get("work_centre") or "").strip()
         rate_l = _to_float(row.get("labor_rate_per_hour"))
         rate_o = _to_float(row.get("overhead_rate_per_hour"))
-        if step and rate_l is not None and rate_o is not None:
-            data.work_centres[step] = WorkCentre(
-                step=step,
-                work_centre=(row.get("work_centre") or step).strip(),
+        if name and rate_l is not None and rate_o is not None:
+            data.work_centres[name] = WorkCentre(
+                work_centre=name,
                 labor_rate_per_hour=rate_l,
                 overhead_rate_per_hour=rate_o,
+                notes=row.get("notes", ""),
             )
+
+    for row in _read_csv(base / "process_routes.csv"):
+        form = (row.get("dosage_form") or "").strip().lower()
+        step = (row.get("step") or "").strip()
+        if not form or not step:
+            continue
+        data.routes.setdefault(form, []).append(
+            RouteStep(
+                dosage_form=form,
+                sequence=_to_int(row.get("sequence"), 0) or 0,
+                step=step,
+                work_centre=(row.get("work_centre") or "").strip(),
+                basis=(row.get("basis") or "").strip().lower(),
+                critical=str(row.get("critical", "1")).strip() not in {"0", "false", "no"},
+                notes=row.get("notes", ""),
+            )
+        )
+    for steps in data.routes.values():
+        steps.sort(key=lambda item: item.sequence)
+
+    for row in _read_csv(base / "run_rates.csv"):
+        name = (row.get("work_centre") or "").strip()
+        if not name:
+            continue
+        data.run_rates[name] = RunRate(
+            work_centre=name,
+            units_per_hour=_to_float(row.get("units_per_hour")),
+            unit=(row.get("unit") or "units").strip(),
+            confirmed=str(row.get("confirmed", "")).strip() in {"1", "true", "yes"},
+            notes=row.get("notes", ""),
+        )
+
+    for row in _read_csv(base / "cleaning_hours.csv"):
+        name = (row.get("work_centre") or "").strip()
+        if name:
+            data.cleaning_hours[name] = _to_float(row.get("hours_per_batch"))
+
+    for row in _read_csv(base / "bottling_rates.csv"):
+        count = _to_int(row.get("count"))
+        if count:
+            entry = {"count": count}
+            entry.update({k: v for k, v in row.items() if k != "count"})
+            data.bottling_rates.append(entry)
+
+    for row in _read_csv(base / "testing_costs.csv"):
+        minimum = _to_int(row.get("min_ingredients"))
+        batch = _to_float(row.get("batch_cost"))
+        if minimum is None or batch is None:
+            continue
+        data.testing_bands.append(
+            TestingBand(
+                min_ingredients=minimum,
+                max_ingredients=_to_int(row.get("max_ingredients")),
+                batch_cost=batch,
+                per_unit_cost=_to_float(row.get("per_unit_cost"), 0.0) or 0.0,
+            )
+        )
 
     for row in _read_csv(base / "bulk_density.csv"):
         key = (row.get("key") or "").strip().lower()

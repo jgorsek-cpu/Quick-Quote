@@ -502,6 +502,7 @@ function breakdownBars(summary) {
     ["Raw materials", summary.raw_materials, ""],
     ["Packaging", summary.packaging, "pkg"],
     ["Manufacturing", summary.manufacturing, "mfg"],
+    ["Testing", summary.testing, "test"],
   ];
   return el("div", {class: "bars"}, rows.map(([label, value, cls]) =>
     el("div", {class: "bar-row"},
@@ -889,10 +890,40 @@ function packagingCard(result) {
     el("div", {class: "body tight scroll-x"}, table));
 }
 
+function stepTable(manufacturing) {
+  if (!manufacturing.steps || !manufacturing.steps.length) return null;
+  const rows = manufacturing.steps.map((step) => el("tr", {},
+    el("td", {}, step.step),
+    el("td", {class: "small"}, step.work_centre || "-"),
+    el("td", {class: "num"}, step.hours == null ? "-" : step.hours.toFixed(2)),
+    el("td", {class: "num"}, step.rate_per_hour == null ? "-" : money(step.rate_per_hour)),
+    step.cost_per_bottle == null
+      ? el("td", {class: "small excluded", colspan: "1"}, "not costed")
+      : el("td", {class: "num"}, money4(step.cost_per_bottle)),
+    el("td", {class: "small muted"}, step.reason || "")));
+  return el("table", {},
+    el("thead", {}, el("tr", {},
+      el("th", {}, "Step"), el("th", {}, "Work centre"), el("th", {class: "num"}, "Hours"),
+      el("th", {class: "num"}, "$/hr"), el("th", {class: "num"}, "$/bottle"), el("th", {}, "Note"))),
+    el("tbody", {}, rows));
+}
+
 function manufacturingCard(manufacturing) {
   return el("div", {class: "card"},
-    el("h3", {}, "Manufacturing"),
+    el("h3", {}, `Manufacturing — ${manufacturing.dosage_form || "capsule"} route`),
+    el("div", {class: "body tight scroll-x"}, stepTable(manufacturing)),
     el("div", {class: "body"},
+      !manufacturing.estimated
+        ? el("div", {class: "alert danger", style: "margin-bottom:12px"},
+            el("strong", {}, "Not estimated. "), manufacturing.reason)
+        : manufacturing.uncosted_steps.length
+          ? el("div", {class: "alert warn", style: "margin-bottom:12px"}, manufacturing.reason)
+          : null,
+      manufacturing.testing_basis
+        ? el("dl", {class: "kv"},
+            el("dt", {}, "Testing"), el("dd", {}, money4(manufacturing.testing_per_bottle)),
+            el("dt", {}, "Testing basis"), el("dd", {class: "small"}, manufacturing.testing_basis))
+        : null,
       manufacturing.estimated
         ? el("dl", {class: "kv"},
             el("dt", {}, "Components in formula"), el("dd", {}, manufacturing.component_count),
@@ -902,6 +933,7 @@ function manufacturingCard(manufacturing) {
             el("dt", {}, "Encapsulation $/bottle"), el("dd", {}, money4(manufacturing.encapsulation_per_bottle)),
             el("dt", {}, "Bottling $/bottle"), el("dd", {}, money4(manufacturing.bottling_per_bottle)),
             el("dt", {}, "Total $/bottle"), el("dd", {}, money(manufacturing.total_per_bottle)),
+            el("dt", {}, "Dosage form"), el("dd", {}, manufacturing.dosage_form),
             el("dt", {}, "Capsules in run"), el("dd", {}, num(manufacturing.total_capsules)),
             el("dt", {}, "Machine"), el("dd", {},
               `${manufacturing.machine}${manufacturing.bottling_line ? " + " + manufacturing.bottling_line : ""}` +
@@ -909,7 +941,7 @@ function manufacturingCard(manufacturing) {
             el("dt", {}, "Selection basis"), el("dd", {class: "small"}, manufacturing.machine_basis || "-"),
             el("dt", {}, "Rates $/hr"), el("dd", {class: "small"},
               `compound ${money(manufacturing.compounding_rate)} · encap ${money(manufacturing.encapsulation_rate)} · bottle ${money(manufacturing.bottling_rate)}`))
-        : el("div", {class: "alert warn"}, manufacturing.reason)));
+        : null));
 }
 
 function flagsCard(result) {

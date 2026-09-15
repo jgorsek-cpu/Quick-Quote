@@ -1,0 +1,4 @@
+min_ingredients,max_ingredients,batch_cost,per_unit_cost,notes
+1,3,700,0.35,From the price sheet testing table
+4,5,900,0.45,From the price sheet testing table
+6,,1100,0.55,6 or more ingredients

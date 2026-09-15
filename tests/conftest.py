@@ -21,16 +21,28 @@ def spec_reference(tmp_path_factory):
     """Reference data configured the way the written specification assumes.
 
     The shipped defaults cost each production step at its own work centre's
-    rate and add a breakage allowance to components. The specification's
-    worked example predates both: it uses one blended labor/OH pair and exact
-    component counts. This fixture turns those two settings off so the example
-    can still be asserted to the cent, which is what makes it a regression
-    test of the cost maths rather than of the current rate policy.
+    rate, add a breakage allowance to components, take bottling speed from the
+    operational CVC run-rate table, and carry an analytical testing cost. The specification's worked example
+    predates all three: one blended labor/OH pair, exact component counts, and
+    a single flat bottling rate.
+
+    This fixture restores those assumptions so the example can still be
+    asserted to the cent, which makes it a regression test of the cost maths
+    rather than of the current rate policy. The real bottling table is roughly
+    five times faster than the flat rate the example implies, so the two
+    genuinely cannot both hold.
     """
     source = get_reference_data().source_dir
     target = tmp_path_factory.mktemp("spec_reference")
     for path in source.glob("*.csv"):
         shutil.copy(path, target / path.name)
+
+    # The example assumes one flat bottling speed, so the real speed table is
+    # withheld and the engine falls back to that rate. It also has no separate
+    # testing line -- its breakdown is materials, packaging and manufacturing
+    # only -- while the operational price sheet does carry one.
+    (target / "bottling_rates.csv").unlink(missing_ok=True)
+    (target / "testing_costs.csv").unlink(missing_ok=True)
 
     rates_path = target / "labor_rates.csv"
     rows = list(csv.DictReader(rates_path.open()))

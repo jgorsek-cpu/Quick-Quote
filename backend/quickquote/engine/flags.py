@@ -262,7 +262,9 @@ def build_flags(
             flags.append(Flag(RND, "Capsule fill", message))
 
     # -- Operations ---------------------------------------------------
-    if manufacturing.machine_assumed:
+    # Only forms that actually run on a selectable machine raise this; a tablet
+    # or gummy line has its own step flags instead.
+    if manufacturing.machine_assumed and manufacturing.machine:
         basis = manufacturing.machine_basis or "default assumption"
         line = manufacturing.bottling_line
         assumed = f"{manufacturing.machine} + {line}" if line else manufacturing.machine
@@ -271,7 +273,25 @@ def build_flags(
                  f"Machine not specified - assumed {assumed} ({basis}).")
         )
     if not manufacturing.estimated:
-        flags.append(Flag(OPERATIONS, "Volume", manufacturing.reason, "blocking"))
+        flags.append(Flag(OPERATIONS, "Manufacturing", manufacturing.reason, "blocking"))
+
+    # A step with no rate on file is named individually, so Operations knows
+    # exactly which number to supply rather than being told the total is wrong.
+    for step in manufacturing.steps:
+        if step.cost_per_bottle is None and step.reason:
+            severity = "blocking" if step.step in manufacturing.uncosted_critical_steps else "review"
+            flags.append(Flag(OPERATIONS, f"{manufacturing.dosage_form} - {step.step}",
+                              step.reason, severity))
+
+    if manufacturing.estimated and manufacturing.uncosted_steps:
+        flags.append(
+            Flag(
+                FINANCE,
+                "Uncosted process steps",
+                f"{len(manufacturing.uncosted_steps)} manufacturing step(s) carry no cost "
+                f"({', '.join(manufacturing.uncosted_steps)}), so the total is understated.",
+            )
+        )
     if product.mfg_loss_factor is None:
         flags.append(
             Flag(

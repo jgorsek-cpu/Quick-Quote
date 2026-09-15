@@ -189,12 +189,34 @@ class Flag:
 
 
 @dataclass
+class ManufacturingStep:
+    """One step of a process route, costed or explained."""
+
+    step: str
+    work_centre: str = ""
+    basis: str = ""
+    hours: float | None = None
+    rate_per_hour: float | None = None
+    cost_per_bottle: float | None = None
+    reason: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
 class ManufacturingEstimate:
     """Labor, overhead and bottling, or the reason none could be produced."""
 
     estimated: bool = False
     reason: str = ""
+    dosage_form: str = ""
     component_count: int = 0
+    steps: list["ManufacturingStep"] = field(default_factory=list)
+    uncosted_steps: list[str] = field(default_factory=list)
+    uncosted_critical_steps: list[str] = field(default_factory=list)
+    testing_per_bottle: float | None = None
+    testing_basis: str = ""
     compounding_hours: float | None = None
     compounding_per_bottle: float | None = None
     encapsulation_hours: float | None = None
@@ -232,6 +254,8 @@ class CostSummary:
     raw_materials: float = 0.0
     packaging: float = 0.0
     manufacturing: float = 0.0
+    testing: float = 0.0
+    testing_basis: str = ""
     primary_per_bottle: float = 0.0
     low_per_bottle: float = 0.0
     high_per_bottle: float = 0.0

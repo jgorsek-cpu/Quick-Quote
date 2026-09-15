@@ -200,6 +200,8 @@ def build_quote_pdf(result: QuoteResult) -> bytes:
              f"{_share(summary.packaging, summary.primary_per_bottle)}"],
             ["Manufacturing", f"${summary.manufacturing:,.2f}",
              f"{_share(summary.manufacturing, summary.primary_per_bottle)}"],
+            ["Testing", f"${summary.testing:,.2f}",
+             f"{_share(summary.testing, summary.primary_per_bottle)}"],
             ["Total", f"${summary.primary_per_bottle:,.2f}", "100%"],
         ],
         [3.4 * inch, 1.6 * inch, 1.5 * inch],

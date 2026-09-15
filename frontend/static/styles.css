@@ -168,6 +168,7 @@ tr.total td { font-weight: 700; background: var(--navy-100); }
 .bar-fill { display: block; height: 100%; min-width: 2px; background: var(--navy); border-radius: 4px; }
 .bar-fill.pkg { background: #4a6fa5; }
 .bar-fill.mfg { background: #8aa4c8; }
+.bar-fill.test { background: #b9c9e8; }
 .bar-row .amt { text-align: right; font-variant-numeric: tabular-nums; }
 
 .kv { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; font-size: 13px; }

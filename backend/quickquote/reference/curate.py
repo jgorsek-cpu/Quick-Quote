@@ -35,6 +35,7 @@ _PERCENT_RE = re.compile(r"(\d{1,3}(?:\.\d+)?)\s*%")
 INGREDIENT_SHEET = "Ingredients"
 PACKAGING_SHEET = "Packaging"
 MACHINE_SHEET = "Machines"
+STEPS_SHEET = "Process Steps"
 PRICING_SHEET = "Margins"
 
 # Columns a human fills in. Everything else is context.
@@ -232,6 +233,55 @@ def export(reference: ReferenceData, destination: Path, limit: int | None = None
                value="Capsules per hour are placeholders scaled from one calibrated "
                      "rate. Replace them from the CVC run rate sheet.").font = Font(italic=True)
 
+    # -- process steps ---------------------------------------------------
+    # Every route step whose rate or throughput is missing, so Operations can
+    # see in one place what stops a line being quotable.
+    sheet = book.create_sheet(STEPS_SHEET)
+    header(sheet, ["Dosage Form", "Step", "Work Centre", "Basis", "Core Step",
+                   "Units per Hour *", "Cleaning Hours *", "Status"])
+    for width, letter in zip([16, 24, 22, 26, 11, 18, 18, 46], "ABCDEFGH"):
+        sheet.column_dimensions[letter].width = width
+
+    index = 2
+    for form in reference.known_dosage_forms():
+        for step in reference.route_for(form):
+            rate_row = reference.run_rates.get(step.work_centre)
+            needs_speed = step.basis in ("units_per_hour", "units_per_hour_machine")
+            needs_clean = step.basis == "fixed_hours"
+            has_rate = reference.centre_rate(step.work_centre) is not None
+            speed = rate_row.units_per_hour if rate_row else None
+            cleaning = reference.cleaning_hours.get(step.work_centre)
+
+            if not has_rate and step.work_centre:
+                status = "No labor/OH rate on file"
+            elif not step.work_centre:
+                status = "No work centre assigned"
+            elif needs_speed and not speed:
+                status = "Run rate missing"
+            elif needs_clean and cleaning is None:
+                status = "Cleaning hours missing"
+            else:
+                status = "OK"
+
+            for column, value in enumerate([
+                form, step.step, step.work_centre or "", step.basis,
+                "core" if step.critical else "ancillary",
+                speed if needs_speed else None,
+                cleaning if needs_clean else None,
+                status,
+            ], start=1):
+                sheet.cell(row=index, column=column, value=value)
+            if needs_speed:
+                sheet.cell(row=index, column=6).fill = PatternFill("solid", fgColor=amber)
+            if needs_clean:
+                sheet.cell(row=index, column=7).fill = PatternFill("solid", fgColor=amber)
+            if status != "OK" and step.critical:
+                sheet.cell(row=index, column=8).fill = PatternFill("solid", fgColor="FCE4E4")
+            index += 1
+    sheet.cell(row=index + 1, column=1,
+               value="A core step with a missing rate stops that dosage form being "
+                     "quoted at all. An ancillary step only understates the total.").font = Font(italic=True)
+
     # -- margins --------------------------------------------------------
     sheet = book.create_sheet(PRICING_SHEET)
     header(sheet, ["Channel", "Label", "Target Margin % *", "Notes"])
@@ -284,8 +334,9 @@ def apply(worksheet: Path, data_dir: Path) -> dict:
     from openpyxl import load_workbook
 
     book = load_workbook(worksheet, data_only=True)
-    changed = {"potency": 0, "overage_class": 0, "density": 0,
-               "role": 0, "units_per_container": 0, "machines": 0, "margins": 0}
+    changed = {"potency": 0, "overage_class": 0, "density": 0, "role": 0,
+               "units_per_container": 0, "machines": 0, "run_rates": 0,
+               "cleaning_hours": 0, "margins": 0}
 
     reference = load_reference_data(data_dir)
 
@@ -372,6 +423,35 @@ def apply(worksheet: Path, data_dir: Path) -> dict:
         _write(path, ["machine", "work_centre", "labor_rate_per_hour",
                       "overhead_rate_per_hour", "capsules_per_hour",
                       "min_capsules", "max_capsules", "notes"], machines.values())
+
+    if STEPS_SHEET in book.sheetnames:
+        rates_path = data_dir / "run_rates.csv"
+        run_rates = {row["work_centre"]: row for row in csv.DictReader(rates_path.open())}
+        clean_path = data_dir / "cleaning_hours.csv"
+        cleaning = {row["work_centre"]: row for row in csv.DictReader(clean_path.open())}
+
+        for get in cells(STEPS_SHEET):
+            centre = (get("Work Centre") or "").strip()
+            if not centre:
+                continue
+            speed = get("Units per Hour *")
+            if centre in run_rates and _changed(speed, run_rates[centre].get("units_per_hour")):
+                run_rates[centre]["units_per_hour"] = f"{float(speed):g}"
+                run_rates[centre]["confirmed"] = "1"
+                run_rates[centre]["notes"] = "Confirmed by Operations"
+                changed["run_rates"] = changed.get("run_rates", 0) + 1
+
+            hours = get("Cleaning Hours *")
+            if centre in cleaning and _changed(hours, cleaning[centre].get("hours_per_batch")):
+                cleaning[centre]["hours_per_batch"] = f"{float(hours):g}"
+                cleaning[centre]["confirmed"] = "1"
+                cleaning[centre]["notes"] = "Confirmed by Operations"
+                changed["cleaning_hours"] = changed.get("cleaning_hours", 0) + 1
+
+        _write(rates_path, ["work_centre", "units_per_hour", "unit", "confirmed", "notes"],
+               run_rates.values())
+        _write(clean_path, ["work_centre", "hours_per_batch", "confirmed", "notes"],
+               cleaning.values())
 
     if PRICING_SHEET in book.sheetnames:
         path = data_dir / "pricing.csv"

@@ -94,7 +94,8 @@ class TestLivePreviewParity:
         parts = summary["summary"]
         manufacturing = summary["manufacturing"]
         assert parts["primary_per_bottle"] == pytest.approx(
-            parts["raw_materials"] + parts["packaging"] + parts["manufacturing"])
+            parts["raw_materials"] + parts["packaging"]
+            + parts["manufacturing"] + parts["testing"])
         assert parts["manufacturing"] == pytest.approx(
             (manufacturing["compounding_per_bottle"] or 0)
             + (manufacturing["encapsulation_per_bottle"] or 0)

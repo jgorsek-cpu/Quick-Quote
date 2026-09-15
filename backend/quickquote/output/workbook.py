@@ -337,6 +337,7 @@ def _cost_summary(book: Workbook, result: QuoteResult) -> None:
         ("Raw materials", summary.raw_materials),
         ("Packaging", summary.packaging),
         ("Manufacturing", summary.manufacturing),
+        ("Testing", summary.testing),
     ):
         row = _kv(sheet, row, label, value, MONEY2)
     sheet.cell(row=row, column=1, value="Total").font = BOLD
@@ -419,7 +420,32 @@ def _cost_summary(book: Workbook, result: QuoteResult) -> None:
         warning.fill = PatternFill("solid", fgColor=AMBER_FILL)
         row += 2
 
-    row = _section(sheet, row, "Manufacturing detail", 5)
+    row = _section(sheet, row, f"Manufacturing route - {manufacturing.dosage_form or 'capsule'}", 5)
+    if manufacturing.steps:
+        _header_row(sheet, row, ["Step", "Work Centre", "Hours", "$/hr", "$/Bottle"])
+        row += 1
+        for step in manufacturing.steps:
+            sheet.cell(row=row, column=1, value=step.step)
+            sheet.cell(row=row, column=2, value=step.work_centre or "-")
+            sheet.cell(row=row, column=3, value=step.hours).number_format = "0.00"
+            if step.rate_per_hour is not None:
+                sheet.cell(row=row, column=4, value=step.rate_per_hour).number_format = MONEY2
+            if step.cost_per_bottle is None:
+                cell = sheet.cell(row=row, column=5, value="Not costed")
+                cell.fill = PatternFill("solid", fgColor=RED_FILL)
+                note = sheet.cell(row=row, column=6, value=step.reason)
+                note.alignment = Alignment(wrap_text=True, vertical="top")
+                note.font = SMALL
+            else:
+                sheet.cell(row=row, column=5, value=step.cost_per_bottle).number_format = MONEY
+            row += 1
+        row += 1
+
+    if manufacturing.testing_basis:
+        row = _kv(sheet, row, "Testing $/bottle", manufacturing.testing_per_bottle, MONEY)
+        row = _kv(sheet, row, "Testing basis", manufacturing.testing_basis)
+        row += 1
+
     if manufacturing.estimated:
         row = _kv(sheet, row, "Components in formula", manufacturing.component_count)
         row = _kv(sheet, row, "Bottles in run", manufacturing.bottles_in_run)
@@ -543,6 +569,7 @@ def _customer_summary(book: Workbook, result: QuoteResult) -> None:
         ("Raw materials", summary.raw_materials),
         ("Packaging", summary.packaging),
         ("Manufacturing", summary.manufacturing),
+        ("Testing", summary.testing),
     ):
         row = _kv(sheet, row, label, value, MONEY2)
     row += 1

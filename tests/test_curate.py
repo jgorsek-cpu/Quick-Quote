@@ -154,7 +154,22 @@ class TestComponentClassification:
 class TestWorksheet:
     def test_it_carries_a_tab_for_each_owner(self, worksheet):
         book = load_workbook(worksheet)
-        assert book.sheetnames == ["Ingredients", "Packaging", "Machines", "Margins"]
+        assert book.sheetnames == ["Ingredients", "Packaging", "Machines",
+                                   "Process Steps", "Margins"]
+
+    def test_the_process_steps_tab_names_every_gap(self, worksheet, reference):
+        """Operations needs one place showing what stops a line being quotable."""
+        sheet = load_workbook(worksheet)["Process Steps"]
+        header = [cell.value for cell in sheet[1]]
+        rows = [dict(zip(header, row))
+                for row in sheet.iter_rows(min_row=2, values_only=True)
+                if row[0] and row[1]]      # the trailing note row has no step
+        forms = {row["Dosage Form"] for row in rows}
+        assert forms >= {"capsule", "tablet", "gummy"}
+
+        gummy = [row for row in rows if row["Dosage Form"] == "gummy"]
+        assert any(row["Status"] == "No work centre assigned" for row in gummy)
+        assert all(row["Core Step"] in ("core", "ancillary") for row in rows)
 
     def test_the_overage_column_offers_only_valid_classes(self, worksheet, reference):
         sheet = load_workbook(worksheet)[INGREDIENT_SHEET]
@@ -191,6 +206,20 @@ class TestRoundTrip:
         rows = {row["key"]: row for row in csv.DictReader((data_dir / "bulk_density.csv").open())}
         assert float(rows[identity]["bulk_density_g_ml"]) == 0.62
         assert "Confirmed" in rows[identity]["notes"]
+
+    def test_a_run_rate_reaches_the_engine(self, worksheet, data_dir):
+        book = load_workbook(worksheet)
+        sheet = book["Process Steps"]
+        header = [cell.value for cell in sheet[1]]
+        row = next(index for index in range(2, sheet.max_row + 1)
+                   if sheet.cell(row=index, column=header.index("Work Centre") + 1).value
+                   == "Tablet press")
+        sheet.cell(row=row, column=header.index("Units per Hour *") + 1).value = 42000
+        book.save(worksheet)
+
+        assert apply(worksheet, data_dir)["run_rates"] == 1
+        rate = load_reference_data(data_dir).run_rates["Tablet press"]
+        assert rate.units_per_hour == 42000 and rate.confirmed
 
     def test_a_margin_target_reaches_the_engine(self, worksheet, data_dir):
         book = load_workbook(worksheet)

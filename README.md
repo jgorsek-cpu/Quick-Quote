@@ -59,6 +59,41 @@ with purchase-order history, and a machine from a band in the machine table.
 Where several options share an identity the system refuses to pick and says so,
 because choosing between grades is Purchasing's call.
 
+### Process routes — one per dosage form
+
+Manufacturing is not capsule-only. Each dosage form has a **route** in
+`process_routes.csv`, and each step names the work centre that runs it:
+
+| Form | Route |
+|---|---|
+| Capsule | Compounding → Blend clean → Encapsulation → Encap clean → Bottling |
+| Tablet | Compounding → Granulation → Tablet press → Blend clean → Bottling |
+| Powder | Compounding → Powder fill → Blend clean → IPF clean |
+| Packet | Compounding → Packet fill → Packet clean |
+| Softgel | Compounding → Encapsulation → Bottling |
+| Gummy | Compounding → Depositing → Curing → Bottling |
+
+Adding a line is a row in a CSV, not a code change.
+
+**A step whose rate or throughput is not on file is never estimated and never
+silently dropped.** It is named, reported to Operations, and the total is
+marked incomplete — so a tablet cannot come back priced as though pressing
+were free. Steps are marked *core* or *ancillary*: an uncosted **core** step
+(a press, a fill) means manufacturing is **not estimated at all** and
+contributes nothing; an uncosted **ancillary** step (cleaning) only
+understates the total and says so.
+
+All 15 work centres from the `2026 labOH rates` table are loaded, including
+the five cleaning rates. Gummies have no work centre in that table, so a gummy
+quote refuses to estimate manufacturing and names the three steps it cannot
+cost.
+
+### Analytical testing
+
+Testing is costed from the price sheet's ingredient-count bands — 1–3
+ingredients $700/batch + $0.35/unit, 4–5 $900 + $0.45, 6+ $1,100 + $0.55 — and
+appears as its own line in the breakdown.
+
 ### Machine selection and work-centre rates
 
 Each production step is costed at its own work centre's rate rather than one
@@ -68,7 +103,12 @@ blended rate:
 |---|---|
 | Compounding | the blend work centre |
 | Encapsulation | the selected machine, with hours from its run rate |
-| Bottling | the packaging line |
+| Bottling | the packaging line, at the CVC speed for this count and capsule size |
+
+Bottling speed comes from the operational `CVC1 run rates` table, which varies
+with bottle count and capsule size: 1,890 bottles/hour at 60 count, 279 at 500.
+The machine table holds **hard-capsule encapsulators only**, so a softgel or
+gummy run selects none rather than borrowing a capsule machine's rate.
 
 The machine follows the size of the run, using the thresholds from the
 operational price sheet:
@@ -137,7 +177,7 @@ Tests:
 .venv/Scripts/python -m pytest          # Windows
 ```
 
-166 tests.
+196 tests.
 
 ---
 
@@ -386,7 +426,7 @@ backend/quickquote/
   schemas.py   the one shape every producer feeds and every consumer reads
   store.py     quote registry and artifacts
 frontend/      index.html · static/app.js · static/styles.css
-tests/         166 tests
+tests/         196 tests
 samples/       demo quote sheets and generated artifacts
 ```
 
@@ -398,11 +438,16 @@ samples/       demo quote sheets and generated artifacts
 - **Manufacturing covers compounding, encapsulation and bottling.** The
   operational price sheet also carries tariffs, freight, remnants, testing by
   ingredient count and customer-specific deductions; those are not modelled here.
-- **Machine run rates are placeholders.** The capsules-per-hour figures in
-  `machines.csv` are scaled from the one rate that reproduces the
-  specification's worked example. Replace them from the `CVC run rates`
-  sheet before the manufacturing figure is trusted; the selection bands and
-  the labor/OH rates are real.
+- **Encapsulation run rates are still placeholders.** The capsules-per-hour
+  figures in `machines.csv` are scaled from one calibrated batch. Bottling
+  speed, every labor/OH rate, the machine selection bands and the testing
+  bands are real; encapsulation throughput is not.
+- **Tablet, powder and gummy lines cannot be quoted yet.** Their run rates
+  are not on file, so those forms refuse to estimate manufacturing and name
+  what is missing. The *Process Steps* tab of the curation worksheet lists
+  every gap in one place.
+- **Cleaning hours are unknown for every line.** Cleaning is ancillary, so an
+  estimate still stands, but it is understated and says so.
 - **Manufacturing no longer matches the specification's illustration.** The
   spec example assumes one blended labor/OH pair ($29.39 / $79.30); the
   shipped default costs each step at its own work centre, which is what the

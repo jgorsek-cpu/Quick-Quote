@@ -33,7 +33,7 @@ from .costing import cost_ingredient, cost_packaging
 from .derive import derive_packaging, derive_serving, total_capsules
 from .flags import build_flags
 from .identity import resolve_identity
-from .manufacturing import estimate_manufacturing
+from .manufacturing import estimate_manufacturing, testing_cost_per_bottle
 from .matching import match_line, part_code_identity_conflict
 from .text import SizeSignature, extract_size, normalise_capsule_size
 
@@ -185,6 +185,12 @@ def run_pipeline(
     )
     derivation_notes.extend(machine_notes)
 
+    testing, testing_basis = testing_cost_per_bottle(
+        reference, len(parsed.formula), product.annual_volume_bottles
+    )
+    manufacturing.testing_per_bottle = testing
+    manufacturing.testing_basis = testing_basis
+
     # -- roll-up -------------------------------------------------------
     summary = _summarise(ingredients, packaging, manufacturing, reference)
     summary.quote_confidence = quote_confidence(ingredients, packaging, reference)
@@ -315,7 +321,11 @@ def _summarise(
         line.cost_per_bottle or 0.0 for line in packaging if line.match.accepted
     )
     summary.manufacturing = manufacturing.total_per_bottle if manufacturing.estimated else 0.0
-    summary.primary_per_bottle = summary.raw_materials + summary.packaging + summary.manufacturing
+    summary.testing = manufacturing.testing_per_bottle or 0.0
+    summary.testing_basis = manufacturing.testing_basis
+    summary.primary_per_bottle = (
+        summary.raw_materials + summary.packaging + summary.manufacturing + summary.testing
+    )
 
     # Every cost-bearing line carries the same +/-10% band, so summing the
     # per-line lows and highs gives a worst-case envelope in which every input
@@ -326,8 +336,8 @@ def _summarise(
     material_high = sum(
         line.cost_high or 0.0 for line in [*ingredients, *packaging] if line.match.accepted
     )
-    summary.low_per_bottle = material_low + summary.manufacturing
-    summary.high_per_bottle = material_high + summary.manufacturing
+    summary.low_per_bottle = material_low + summary.manufacturing + summary.testing
+    summary.high_per_bottle = material_high + summary.manufacturing + summary.testing
 
     all_lines: list[CostedIngredient | CostedPackaging] = [*ingredients, *packaging]
     unmatched = [line for line in all_lines if line.match.status == UNMATCHED]
