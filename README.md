@@ -177,7 +177,7 @@ Tests:
 .venv/Scripts/python -m pytest          # Windows
 ```
 
-199 tests.
+198 tests.
 
 ---
 
@@ -426,7 +426,7 @@ backend/quickquote/
   schemas.py   the one shape every producer feeds and every consumer reads
   store.py     quote registry and artifacts
 frontend/      index.html · static/app.js · static/styles.css
-tests/         199 tests
+tests/         198 tests
 samples/       demo quote sheets and generated artifacts
 ```
 
