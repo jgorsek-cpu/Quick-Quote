@@ -45,11 +45,30 @@ never an estimate.
 ```
 
 `run.sh` creates `.venv`, installs `requirements.txt` and starts the server.
-Python 3.11+.
+Needs Python 3.11 or newer.
+
+It runs on macOS, Linux and **Windows under Git Bash**. Windows lays a virtual
+environment out as `.venv/Scripts/python.exe` where everything else uses
+`.venv/bin/python`, and often has `python` or the `py` launcher rather than
+`python3`; the script resolves whichever is present instead of assuming. If no
+usable interpreter is found it says so rather than failing further down — the
+Microsoft Store `python` stub is detected and rejected, since it is on `PATH`
+but is not an interpreter.
+
+Override the bind address with environment variables:
 
 ```bash
-.venv/bin/python -m pytest        # 86 tests
+HOST=0.0.0.0 PORT=9000 ./run.sh
 ```
+
+Tests:
+
+```bash
+.venv/bin/python -m pytest              # macOS and Linux
+.venv/Scripts/python -m pytest          # Windows
+```
+
+86 tests.
 
 ---
 
