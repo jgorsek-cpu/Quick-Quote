@@ -32,6 +32,21 @@ def po_rows_by_identity(reference: ReferenceData, packaging: bool) -> dict[str, 
     return reference.identity_index[packaging]
 
 
+def po_rows_by_role(reference: ReferenceData, role: str) -> list[PoRow]:
+    """Every PO row whose packaging identity carries this role.
+
+    Lets a pack-out be built from the catalogue that exists rather than only
+    from the hand-curated canonical names, while still refusing to choose
+    between several candidates.
+    """
+    index = po_rows_by_identity(reference, packaging=True)
+    rows: list[PoRow] = []
+    for entry in reference.packaging_identities:
+        if entry.role == role:
+            rows.extend(index.get(entry.canonical, []))
+    return rows
+
+
 def _result_from_po(row: PoRow, status: str, reason: str, method: str, **extra) -> MatchResult:
     return MatchResult(
         status=status,

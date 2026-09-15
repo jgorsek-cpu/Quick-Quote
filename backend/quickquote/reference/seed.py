@@ -170,6 +170,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--po-history", type=Path, required=True)
     parser.add_argument("--out-dir", type=Path, required=True)
+    parser.add_argument(
+        "--merge-into", type=Path, default=None,
+        help="Append the proposals to the curated identity tables in this "
+             "directory. Each appended row keeps its PROPOSED note, so R&D and "
+             "Purchasing can see what has not been confirmed yet.",
+    )
     arguments = parser.parse_args(argv)
 
     if not arguments.po_history.exists():
@@ -193,9 +199,44 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  Descriptions shared by >1 part (will report Needs Review): "
           f"{stats['collisions']:,}")
     print(f"\nWrote proposals to {arguments.out_dir}")
-    print("Review them, then append the confirmed rows to the curated tables in "
-          "reference/data/. Nothing is applied automatically.")
+
+    if arguments.merge_into:
+        added = merge_into(arguments.merge_into, ingredient_rows, packaging_rows)
+        print(f"\nMerged into {arguments.merge_into}:")
+        print(f"  ingredient identities appended: {added['ingredients']:,}")
+        print(f"  packaging identities appended:  {added['packaging']:,}")
+        print("Every appended row is marked PROPOSED. Curating them - setting "
+              "potency, splitting grades, adding guard pairs - is R&D's and "
+              "Purchasing's work, and the engine flags the defaults until then.")
+    else:
+        print("Review them, then append the confirmed rows to the curated tables in "
+              "reference/data/. Nothing is applied automatically.")
     return 0
+
+
+def merge_into(
+    data_dir: Path, ingredient_rows: list[dict], packaging_rows: list[dict]
+) -> dict[str, int]:
+    """Append proposals to the curated tables, never displacing a curated row."""
+    added = {"ingredients": 0, "packaging": 0}
+
+    for name, rows, fields, key in (
+        ("ingredient_identity.csv", ingredient_rows, INGREDIENT_FIELDS, "ingredients"),
+        ("packaging_identity.csv", packaging_rows, PACKAGING_FIELDS, "packaging"),
+    ):
+        path = data_dir / name
+        existing = list(csv.DictReader(path.open())) if path.exists() else []
+        seen = {row["canonical"] for row in existing}
+        fresh = [row for row in rows if row["canonical"] not in seen]
+
+        merged = existing + fresh
+        with path.open("w", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(handle, fieldnames=fields, extrasaction="ignore")
+            writer.writeheader()
+            writer.writerows(merged)
+        added[key] = len(fresh)
+
+    return added
 
 
 if __name__ == "__main__":

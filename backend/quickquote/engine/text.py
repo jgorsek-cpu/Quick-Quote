@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from functools import lru_cache
 
 SHORT_ALIAS_LEN = 5
 
@@ -25,6 +26,14 @@ _CAPSULE_SIZE_RE = re.compile(r"\bsize\s*(000|00|0|1|2|3|4)\b")
 _BARE_CAPSULE_SIZE_RE = re.compile(r"\b(000|00)\b")
 _VOLUME_RE = re.compile(r"\b(\d+(?:\.\d+)?)\s*(cc|ml)\b")
 _NECK_RE = re.compile(r"\b(\d+(?:\.\d+)?)\s*mm\b")
+# Packaging quotes a closure as a neck finish: "45/400" is a 45mm neck with a
+# 400 thread. Normalisation has already turned the slash into a space by the
+# time this runs. Only real thread codes are accepted, so an incidental pair of
+# numbers such as "50 50" in "50/50 SIL/CARB" is not read as a neck size.
+_THREAD_CODES = "400|410|415|425|430|445|450|460|470|480|485|490"
+_NECK_FINISH_RE = re.compile(
+    r"\b(\d{2,3})\s*(?:mm)?\s+(?:" + _THREAD_CODES + r")\b"
+)
 _COUNT_RE = re.compile(r"\b(\d+)\s*(?:ct|count|caps?|capsules?|tablets?|tabs?)\b")
 
 
@@ -48,23 +57,61 @@ def contains_word(haystack_spaced: str, needle_spaced: str) -> bool:
     return re.search(pattern, haystack_spaced) is not None
 
 
-def alias_matches(text: str, alias: str) -> bool:
-    """Apply the containment rules for one alias.
+@dataclass(frozen=True)
+class AliasForm:
+    """An alias with its normal forms and boundary pattern worked out once.
 
-    Aliases shorter than :data:`SHORT_ALIAS_LEN` characters must land on word
-    boundaries and may never match through the compact form.
+    Normalising an alias and compiling its word-boundary pattern are pure
+    functions of the alias, but the matcher used to redo both for every
+    candidate string. Against a real catalogue that was a million regex
+    compilations per index build.
     """
+
+    spaced: str
+    tight: str
+    short: bool
+    pattern: re.Pattern
+
+
+@lru_cache(maxsize=16384)
+def alias_form(alias: str) -> AliasForm | None:
+    """The cached normal forms for one alias."""
     alias_spaced = spaced(alias)
     if not alias_spaced:
+        return None
+    alias_tight = alias_spaced.replace(" ", "")
+    return AliasForm(
+        spaced=alias_spaced,
+        tight=alias_tight,
+        short=len(alias_tight) < SHORT_ALIAS_LEN,
+        pattern=re.compile(
+            r"(?<![a-z0-9])" + re.escape(alias_spaced) + r"(?![a-z0-9])"
+        ),
+    )
+
+
+def alias_matches_forms(text_spaced: str, text_tight: str, form: AliasForm | None) -> bool:
+    """Apply the containment rules against already-normalised text.
+
+    Short aliases must land on word boundaries and may never match through the
+    compact form, which is what stops ``msm`` colliding with
+    ``mm smooth silver``.
+    """
+    if form is None or not text_spaced:
         return False
+    if form.short:
+        return form.pattern.search(text_spaced) is not None
+    if form.pattern.search(text_spaced) is not None:
+        return True
+    if form.spaced in text_spaced:
+        return True
+    return form.tight in text_tight
+
+
+def alias_matches(text: str, alias: str) -> bool:
+    """Apply the containment rules for one alias."""
     text_spaced = spaced(text)
-    if len(alias_spaced.replace(" ", "")) < SHORT_ALIAS_LEN:
-        return contains_word(text_spaced, alias_spaced)
-    if contains_word(text_spaced, alias_spaced):
-        return True
-    if alias_spaced in text_spaced:
-        return True
-    return tight(alias) in tight(text)
+    return alias_matches_forms(text_spaced, text_spaced.replace(" ", ""), alias_form(alias))
 
 
 @dataclass(frozen=True)
@@ -142,6 +189,10 @@ def extract_size(text: str | None, role: str = "") -> SizeSignature:
     neck_match = _NECK_RE.search(normalised)
     if neck_match:
         neck_mm = float(neck_match.group(1))
+    else:
+        finish_match = _NECK_FINISH_RE.search(normalised)
+        if finish_match:
+            neck_mm = float(finish_match.group(1))
 
     return SizeSignature(capsule_size=capsule_size, volume_cc=volume_cc, neck_mm=neck_mm)
 

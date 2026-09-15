@@ -15,7 +15,7 @@ from dataclasses import dataclass
 
 from ..reference.loader import Machine, PoRow, ReferenceData
 from ..schemas import PackagingLine, ProductSpec
-from .matching import po_rows_by_identity
+from .matching import po_rows_by_identity, po_rows_by_role
 from .text import extract_size, normalise_capsule_size
 
 
@@ -193,14 +193,37 @@ def choose_bottle(
 
 def choose_cap(
     reference: ReferenceData, neck_mm: float | None, canonical: str = "cr cap white"
-) -> PoRow | None:
-    """The closure matching a bottle's neck finish. Size is never substituted."""
+) -> tuple[PoRow | None, str]:
+    """The closure matching a bottle's neck finish, and why it was or was not found.
+
+    Size is never substituted. Where the curated identity has nothing, the
+    whole cap catalogue is searched by role -- but several candidates means
+    the choice is a real one (child-resistant or not, liner, colour), so the
+    count is reported and nothing is picked.
+    """
     if neck_mm is None:
-        return None
-    for row in po_rows_by_identity(reference, packaging=True).get(canonical, []):
-        if extract_size(row.description, role="cap").neck_mm == neck_mm:
-            return row
-    return None
+        return None, "Bottle neck finish is unknown, so no closure was chosen."
+
+    def at_neck(rows: list[PoRow]) -> list[PoRow]:
+        return [
+            row for row in rows
+            if extract_size(row.description, role="cap").neck_mm == neck_mm
+        ]
+
+    preferred = at_neck(po_rows_by_identity(reference, packaging=True).get(canonical, []))
+    if len(preferred) == 1:
+        return preferred[0], ""
+
+    candidates = at_neck(po_rows_by_role(reference, "cap"))
+    if len(candidates) == 1:
+        return candidates[0], ""
+    if not candidates:
+        return None, f"No stocked closure matches a {neck_mm:g}mm neck finish."
+    return None, (
+        f"{len(candidates)} stocked closures match a {neck_mm:g}mm neck finish "
+        f"(for example {', '.join(row.part_number for row in candidates[:3])}) - "
+        "choose one rather than letting the system pick."
+    )
 
 
 def choose_capsule_shell(product: ProductSpec, reference: ReferenceData) -> PoRow | None:
@@ -281,12 +304,9 @@ def derive_packaging(
                 (line for line in [*existing, *added] if line.role == "bottle"), None
             )
             neck = extract_size(bottle_line.description, role="bottle").neck_mm if bottle_line else None
-            row = choose_cap(reference, neck)
+            row, note = choose_cap(reference, neck)
             if row is None:
-                if neck is None:
-                    notes.append("Bottle neck finish is unknown, so no closure was chosen.")
-                else:
-                    notes.append(f"No stocked closure matches a {neck:g}mm neck finish.")
+                notes.append(note)
                 continue
             added.append(PackagingLine(role=role, description=row.description,
                                        notes=f"Matched to the bottle's {neck:g}mm neck finish"))
@@ -300,11 +320,15 @@ def derive_packaging(
             continue
         options = po_rows_by_identity(reference, packaging=True).get(canonical, [])
         if len(options) != 1:
+            # Fall back to the whole catalogue for this role before giving up.
+            options = po_rows_by_role(reference, role) or options
+        if len(options) != 1:
             if not options:
-                notes.append(f"No purchase-order record for {canonical}; not added.")
+                notes.append(f"No purchase-order record for a {role.replace('_', ' ')}; not added.")
             else:
                 notes.append(
-                    f"{len(options)} records share identity '{canonical}'; "
+                    f"{len(options)} stocked options for {role.replace('_', ' ')} "
+                    f"(for example {', '.join(row.part_number for row in options[:3])}) - "
                     "choose one rather than letting the system pick."
                 )
             continue

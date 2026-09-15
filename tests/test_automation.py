@@ -1,4 +1,7 @@
 """Derivation, pack-out, breakage, fill volume, price breaks and pricing."""
+import copy
+from datetime import date
+
 import pytest
 
 from quickquote.config import ACCEPTED
@@ -15,6 +18,15 @@ from quickquote.engine.text import extract_size
 from quickquote.schemas import FormulaLine, PackagingLine, ParsedQuote, ProductSpec
 
 from .conftest import AS_OF
+
+
+def _cap_row(part: str, description: str):
+    from quickquote.reference.loader import PoRow
+
+    return PoRow(part_number=part, description=description, uom="EA",
+                 latest_unit_cost=0.1, min_unit_cost_ever=0.1, max_unit_cost_ever=0.1,
+                 latest_po_date=date(2026, 8, 1), latest_vendor="", 
+                 unique_vendor_count=0, po_count=1)
 
 
 def quote(**product_kwargs) -> ParsedQuote:
@@ -87,10 +99,36 @@ class TestPackagingDerivation:
         assert choose_bottle(product, reference) is None
 
     def test_closure_matches_the_bottle_neck_finish(self, reference):
-        row = choose_cap(reference, 45.0)
-        assert row is not None
+        row, note = choose_cap(reference, 45.0)
+        assert row is not None and note == ""
         assert extract_size(row.description, role="cap").neck_mm == 45.0
-        assert choose_cap(reference, 99.0) is None      # size is never substituted
+
+    def test_a_neck_with_no_stocked_closure_is_not_substituted(self, reference):
+        row, note = choose_cap(reference, 99.0)
+        assert row is None
+        assert "No stocked closure" in note
+
+    def test_several_matching_closures_are_reported_not_chosen(self, reference):
+        """Child-resistant or not, liner, colour: a real choice, not the system's."""
+        from quickquote.reference.loader import IdentityEntry
+
+        crowded = copy.deepcopy(reference)
+        crowded.identity_index = None
+        crowded.packaging_identities = [
+            entry for entry in crowded.packaging_identities if entry.role != "cap"
+        ] + [
+            IdentityEntry(canonical=f"cap option {n}", aliases=(f"cap option {n}",),
+                          role="cap", size_required=True)
+            for n in (1, 2)
+        ]
+        crowded.po_rows = list(crowded.po_rows) + [
+            _cap_row("CAP-1", "Cap Option 1 45mm White"),
+            _cap_row("CAP-2", "Cap Option 2 45mm Black"),
+        ]
+        # The curated identity has no rows, so the search falls back to role.
+        row, note = choose_cap(crowded, 45.0, canonical="cr cap white")
+        assert row is None
+        assert "2 stocked closures" in note and "choose one" in note
 
     def test_a_full_pack_out_is_built_from_the_spec(self, reference):
         product = ProductSpec(capsule_size="0", capsule_type="Vegetable",

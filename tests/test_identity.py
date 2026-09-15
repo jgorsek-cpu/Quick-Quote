@@ -56,6 +56,23 @@ class TestSize:
         assert extract_size("capsule size 0").capsule_size == "0"
         assert extract_size("capsule size 00").conflicts_with(extract_size("capsule size 0"))
 
+    def test_neck_finish_notation_is_read(self):
+        """Operational data writes a closure as "45/400", not "45mm"."""
+        assert extract_size("225CC WHT HDPE BOTTLE 45/400").neck_mm == 45.0
+        assert extract_size("33mm/400 BLACK RIBBED CAP SFYP").neck_mm == 33.0
+        assert extract_size("38mm RS WHITE GATE FOAM 38/400").neck_mm == 38.0
+
+    def test_an_incidental_number_pair_is_not_a_neck_finish(self):
+        """Only real thread codes count, so "50/50" stays a ratio."""
+        assert extract_size("1.0 G DESICCANT 50/50 SIL/CARB").neck_mm is None
+        assert extract_size("12X10000ft SHRINK BUNDLING FILM").neck_mm is None
+        assert extract_size("175mmLFW x 500m .05 Shrink PVC").neck_mm is None
+
+    def test_a_bottle_and_its_closure_agree_on_the_neck(self):
+        bottle = extract_size("225cc WHITE HDPE BOTTLE 45/400", role="bottle")
+        closure = extract_size("45mm/400 WHITE RIBBED CAP", role="cap")
+        assert bottle.neck_mm == closure.neck_mm == 45.0
+
     def test_unstated_dimension_is_not_a_conflict(self):
         stated = extract_size("bottle 175cc")
         full = extract_size("bottle 175cc 45mm")

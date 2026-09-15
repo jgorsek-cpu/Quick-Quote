@@ -137,7 +137,7 @@ Tests:
 .venv/Scripts/python -m pytest          # Windows
 ```
 
-134 tests.
+141 tests.
 
 ---
 
@@ -228,6 +228,18 @@ The shipped `backend/quickquote/reference/data/` is a **worked demonstration
 set**, calibrated to reproduce the example in the system specification. It is
 not production pricing. Point the system at real data with two commands.
 
+### One command
+
+```bash
+scripts/load_real_data.sh "Price Sheet.xlsx" Raw_PO.xlsx PKG_PO.xlsx
+QUICKQUOTE_REFERENCE_DIR=var/reference ./run.sh
+```
+
+The first argument is the workbook holding the inventory master; the rest are
+purchase-order exports. Output lands in `var/reference`, which is **not
+committed** — those tables carry real vendor pricing, and git history is
+forever. The two steps it runs are below if you want them separately.
+
 ### 1. Build PO history from operational exports
 
 The operational PO exports are transaction level — `Purchase Order Date`, `Part
@@ -268,8 +280,21 @@ Review; potency is left blank so the documented default applies *and* raises its
 R&D flag; and descriptions already covered by curation are skipped so
 hand-curated entries are never displaced.
 
-**Nothing is applied automatically.** Review the proposals, then append the
-confirmed rows to the curated tables.
+`--merge-into <dir>` appends the proposals to the curated tables in one step,
+each row still marked `PROPOSED` so R&D and Purchasing can see what has not
+been confirmed. `scripts/load_real_data.sh` does this for you.
+
+**Curation is the remaining work, and the system is honest about it.** Until a
+real part is mapped to a canonical identity, the engine will not choose between
+candidates — it names them instead:
+
+```
+19 stocked closures match a 45mm neck finish (for example KCTP45FDB,
+KCTP45BLK, KCTP45BL-VS) - choose one rather than letting the system pick.
+```
+
+That is the intended behaviour: child-resistant or not, liner, colour are a
+buyer's decision, not the system's.
 
 Point the app at a different reference directory with
 `QUICKQUOTE_REFERENCE_DIR=/path/to/data`.
@@ -331,7 +356,7 @@ backend/quickquote/
   schemas.py   the one shape every producer feeds and every consumer reads
   store.py     quote registry and artifacts
 frontend/      index.html · static/app.js · static/styles.css
-tests/         134 tests
+tests/         141 tests
 samples/       demo quote sheets and generated artifacts
 ```
 

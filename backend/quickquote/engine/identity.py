@@ -15,7 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from ..reference.loader import IdentityEntry, ReferenceData
-from .text import alias_matches, spaced
+from .text import alias_form, alias_matches_forms, spaced
 
 
 @dataclass(frozen=True)
@@ -45,8 +45,10 @@ def resolve_identity(
     shorter overlapping alias and ``glucosamine sulfate 2kcl`` beats
     ``glucosamine sulfate``.
     """
-    if not text or not spaced(text):
+    text_spaced = spaced(text)
+    if not text_spaced:
         return None
+    text_tight = text_spaced.replace(" ", "")
 
     table = reference.packaging_identities if packaging else reference.ingredient_identities
     best: Resolution | None = None
@@ -56,13 +58,13 @@ def resolve_identity(
     for entry in table:
         entry_hit = False
         for alias in entry.aliases:
-            if not alias_matches(text, alias):
+            form = alias_form(alias)
+            if not alias_matches_forms(text_spaced, text_tight, form):
                 continue
             entry_hit = True
-            length = len(spaced(alias).replace(" ", ""))
-            if length > best_length:
+            if len(form.tight) > best_length:
                 best = Resolution(canonical=entry.canonical, alias=alias, entry=entry)
-                best_length = length
+                best_length = len(form.tight)
         if entry_hit:
             matched.append(entry.canonical)
 
