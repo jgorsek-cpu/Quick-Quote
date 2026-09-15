@@ -1,0 +1,72 @@
+part_number,description,uom,latest_unit_cost,min_unit_cost_ever,max_unit_cost_ever,latest_po_date,latest_vendor,unique_vendor_count,po_count
+RM-1042,Mega Natural-BP Grape Seed Extract Powder,KG,310.00,268.00,341.00,2025-07-23,Polyphenolics,1,6
+RM-1050,Grape Seed Extract 95% OPC,KG,88.50,74.00,96.25,2026-06-11,Nutra Botanica,3,14
+RM-2210,Coenzyme Q10 Ubiquinone USP Powder,KG,372.50,152.50,525.00,2026-05-28,Kaneka Americas,2,19
+RM-2215,Ubiquinol CoQ10 Kaneka QH,KG,910.00,860.00,975.00,2026-04-02,Kaneka Americas,1,4
+RM-2301,Garlic Powder 4:1 Allium Sativum,KG,24.80,19.50,28.00,2026-07-14,Herb Source Intl,3,22
+RM-2410,Turmeric Extract 95% Curcuminoids,KG,64.00,52.00,71.50,2026-08-05,Sabinsa,2,17
+RM-2415,Turmeric Root Powder Organic,KG,12.40,9.80,14.20,2026-06-30,Herb Source Intl,4,26
+RM-3320,Milk Thistle Extract 80% Silymarin,KG,78.00,66.00,84.00,2026-07-02,Nutra Botanica,2,11
+RM-3340,Ashwagandha Extract KSM-66 5% Withanolides,KG,132.00,118.00,145.00,2026-08-18,Ixoreal,1,9
+RM-3341,Ashwagandha Extract Sensoril 10% Withanolides,KG,178.00,160.00,190.00,2026-05-09,Natreon,1,5
+RM-3350,Ashwagandha Root Powder Organic,KG,21.00,17.50,24.00,2026-07-21,Herb Source Intl,3,13
+RM-3360,Green Tea Extract 50% EGCG,KG,96.00,80.00,112.00,2026-06-17,Nutra Botanica,3,15
+RM-3370,Saw Palmetto Extract 45% Fatty Acids,KG,168.00,140.00,205.00,2026-04-22,Valensa,2,8
+RM-3380,Bacopa Monnieri Extract Bacognize 10%,KG,142.00,128.00,158.00,2026-03-30,Verdure Sciences,1,6
+RM-3390,Rhodiola Rosea Extract 3% Rosavins,KG,188.00,165.00,210.00,2026-05-14,Nutra Botanica,2,7
+RM-3395,Beet Root Powder Organic,KG,16.80,13.20,19.40,2026-08-25,Herb Source Intl,4,18
+RM-3315,Vitamin K2 MK-7 1500 mcg/g Premix,KG,1240.00,1150.00,1320.00,2026-06-05,Gnosis,1,5
+RM-4408,Lutein 5% Beadlet FloraGLO,KG,206.00,185.00,228.00,2026-07-09,Kemin,1,7
+RM-4410,Zeaxanthin Isomers 5%,KG,412.00,380.00,455.00,2026-02-19,Kemin,1,3
+RM-5501,Magnesium Oxide Powder USP,KG,4.85,3.90,5.60,2026-08-11,Jost Chemical,3,24
+RM-5502,Magnesium Citrate Powder,KG,9.20,7.80,10.40,2026-07-28,Jost Chemical,2,16
+RM-5503,Magnesium Bisglycinate Chelate,KG,18.60,16.00,21.20,2026-08-02,Albion Minerals,2,12
+RM-6601,Calcium Carbonate Powder USP,KG,2.10,1.65,2.45,2026-08-20,Mississippi Lime,3,21
+RM-7701,Zinc Oxide Powder USP,KG,14.50,11.80,17.00,2026-07-17,Jost Chemical,2,14
+RM-7702,Zinc Picolinate Powder,KG,58.00,49.00,66.00,2026-05-21,Jost Chemical,2,9
+RM-7710,L-Selenomethionine 0.4%,KG,168.00,150.00,186.00,2026-04-08,Sabinsa,1,6
+RM-7720,Chromium Picolinate Powder,KG,142.00,124.00,160.00,2026-06-24,Nutra Botanica,2,8
+RM-7730,Ferrous Fumarate Powder USP,KG,11.40,9.20,13.00,2026-07-06,Dr Paul Lohmann,2,10
+RM-8801,Biotin 1% Trituration,KG,38.00,32.00,44.00,2026-08-14,DSM,2,11
+RM-8802,Vitamin B12 Cyanocobalamin 1% Trituration,KG,52.00,45.00,60.00,2026-07-30,DSM,2,13
+RM-8803,Vitamin D3 Cholecalciferol 100000 IU/g,KG,88.00,74.00,98.00,2026-08-07,DSM,2,15
+RM-8810,Ascorbic Acid USP Fine Powder,KG,8.90,6.40,11.20,2026-08-22,DSM,4,31
+RM-8820,dl-Alpha Tocopheryl Acetate 50% Powder,KG,42.00,36.00,49.00,2026-06-13,DSM,2,9
+RM-8830,Folic Acid USP,KG,124.00,105.00,142.00,2026-05-19,DSM,2,7
+RM-9901,Black Pepper Extract BioPerine 95% Piperine,KG,850.00,780.00,920.00,2026-08-09,Sabinsa,1,8
+RM-9910,L-Theanine Suntheanine,KG,320.00,290.00,360.00,2026-06-27,Taiyo,1,6
+RM-9920,L-Arginine HCl USP,KG,22.50,18.00,26.00,2026-07-24,Ajinomoto,3,17
+RM-9930,L-Citrulline Malate 2:1,KG,34.00,28.00,39.00,2026-08-01,Ajinomoto,2,11
+RM-9940,Creatine Monohydrate Micronized,KG,26.80,21.00,31.50,2026-08-27,Alzchem,3,19
+RM-9950,MSM Methylsulfonylmethane OptiMSM,KG,15.20,12.40,18.00,2026-07-11,Bergstrom,2,14
+RM-9960,Glucosamine Sulfate 2KCl,KG,19.80,16.20,23.00,2026-06-20,Ethical Naturals,2,12
+RM-9965,Glucosamine HCl 99%,KG,17.40,14.00,20.50,2026-07-15,Ethical Naturals,2,10
+RM-9970,Bromelain 2400 GDU/g,KG,186.00,164.00,208.00,2026-05-06,Enzyme Development,1,5
+RM-9975,Lactobacillus Acidophilus Blend 100B CFU/g,KG,410.00,360.00,468.00,2026-06-09,Chr Hansen,2,8
+RM-9980,Fish Oil Powder 18/12 EPA DHA,KG,64.00,54.00,74.00,2026-04-15,BASF,2,7
+EX-1001,Rice Flour Organic Fine Mesh,KG,6.50,5.20,7.40,2026-08-29,Beneo,3,23
+EX-1002,Microcrystalline Cellulose PH-102,KG,5.80,4.60,6.90,2026-08-19,JRS Pharma,3,20
+EX-1003,Magnesium Stearate Vegetable Grade,KG,8.00,6.50,9.40,2026-08-26,Mallinckrodt,2,18
+EX-1004,Silicon Dioxide Fine Powder,KG,11.20,9.00,13.20,2026-07-31,Evonik,2,16
+EX-1005,Maltodextrin DE-10,KG,3.40,2.60,4.10,2026-08-15,Roquette,3,22
+PK-1175,HDPE Packer Bottle White 175cc 45mm,EA,0.2800,0.2410,0.3050,2026-08-12,Alpha Packaging,2,26
+PK-1250,HDPE Packer Bottle White 250cc 53mm,EA,0.3450,0.3020,0.3780,2026-08-06,Alpha Packaging,2,21
+PK-1300,HDPE Packer Bottle White 300cc 53mm,EA,0.3900,0.3400,0.4250,2026-07-27,Alpha Packaging,2,17
+PK-1120,HDPE Packer Bottle Black 120cc 38mm,EA,0.2450,0.2100,0.2700,2026-06-18,Alpha Packaging,1,9
+PK-1400,PET Packer Bottle Clear 400cc 53mm,EA,0.4600,0.4050,0.5100,2026-05-25,Berry Global,2,11
+PK-2045,Child-Resistant Cap White 45mm F217 Liner,EA,0.1000,0.0860,0.1140,2026-08-13,Berry Global,3,29
+PK-2053,Child-Resistant Cap White 53mm F217 Liner,EA,0.1180,0.1020,0.1320,2026-08-04,Berry Global,3,24
+PK-2038,Child-Resistant Cap Black 38mm F217 Liner,EA,0.0940,0.0820,0.1060,2026-06-22,Berry Global,2,12
+PK-2145,Standard Screw Cap White 45mm,EA,0.0780,0.0650,0.0890,2026-07-19,Berry Global,2,14
+PK-3001,Pressure Sensitive Body Label 4-Color,EA,0.0900,0.0720,0.1080,2026-08-21,Fort Dearborn,3,33
+PK-3002,Shrink Neckband Clear Tamper Evident,EA,0.0120,0.0098,0.0140,2026-08-10,Seal It,2,19
+PK-3003,Induction Foil Seal Liner 45mm,EA,0.0210,0.0180,0.0245,2026-07-23,Selig Sealing,2,15
+PK-3004,Cotton Coil Rayon Filler,EA,0.0110,0.0090,0.0130,2026-08-18,Jaece Industries,2,18
+PK-3005,Desiccant Canister 1g Silica Gel,EA,0.0220,0.0185,0.0260,2026-08-08,Multisorb,2,16
+PK-3006,Corrugated Shipper Carton 12x9x9 32ECT,EA,1.2000,1.0400,1.3600,2026-08-23,Packaging Corp,3,20
+PK-4000,Vegetable Capsule Shell Size 00 Clear HPMC,M,3.6500,3.1000,4.0500,2026-08-16,Capsugel,2,28
+PK-4001,Vegetable Capsule Shell Size 0 Clear HPMC,M,3.1000,2.7000,3.4500,2026-08-05,Capsugel,2,25
+PK-4002,Vegetable Capsule Shell Size 1 Clear HPMC,M,2.8500,2.4500,3.1500,2026-07-12,Capsugel,2,18
+PK-4010,Gelatin Capsule Shell Size 00 Clear Bovine,M,2.4000,2.0500,2.7500,2026-07-29,Lonza,2,22
+PK-4011,Gelatin Capsule Shell Size 0 Clear Bovine,M,2.1000,1.8000,2.4000,2026-06-26,Lonza,2,19
+PK-5000,Dosing Scoop 5cc White,EA,0.0340,0.0280,0.0400,2026-06-14,Polypack,2,10

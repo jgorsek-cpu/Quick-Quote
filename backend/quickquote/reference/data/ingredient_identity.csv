@@ -1,0 +1,54 @@
+canonical,aliases,overage_class,default_potency,notes
+grape seed extract,grape seed extract|grape seed ext|vitis vinifera seed,botanical_extract,1.0,
+mega natural bp grape extract,mega natural-bp|mega natural bp|mega natural grape|mega-natural-bp grape seed extract,botanical_extract,1.0,Branded whole grape extract
+coenzyme q10,coenzyme q10|coenzyme q-10|co-enzyme q10|coq10|co q10|ubiquinone,coq10,1.0,
+ubiquinol,ubiquinol|reduced coq10|kaneka ubiquinol,coq10,1.0,Distinct from ubiquinone
+aged garlic extract,aged garlic extract|aged garlic|kyolic aged garlic,botanical_extract,1.0,
+garlic powder,garlic powder|garlic bulb powder|garlic root powder|allium sativum powder,botanical_powder,1.0,
+red yeast rice,red yeast rice|red yeast rice extract|monascus purpureus,botanical_extract,,Potency depends on monacolin standardisation - confirm claim basis per lot
+red clover extract,red clover extract|red clover|trifolium pratense,botanical_extract,1.0,
+turmeric extract,turmeric extract|curcuma longa extract|curcumin extract|curcumin c3,botanical_extract,0.95,Standardized to 95 percent curcuminoids
+turmeric powder,turmeric powder|turmeric root powder|curcuma longa powder,botanical_powder,1.0,
+glucosamine sulfate,glucosamine sulfate|glucosamine sulphate|glucosamine sulfate 2kcl,mineral_salt,1.0,
+glucosamine hcl,glucosamine hcl|glucosamine hydrochloride,mineral_salt,1.0,
+vitamin k2 mk7,vitamin k2|menaquinone-7|mk-7|menaquinone 7|vitamin k2 as mk-7,vitamin_k,0.001,Assay basis mcg per mg of blended material
+vitamin c,vitamin c|ascorbic acid|l-ascorbic acid,vitamin_c,1.0,
+vitamin d3,vitamin d3|cholecalciferol|vitamin d-3,vitamin_d,0.00025,100000 IU per gram premix basis
+vitamin e,vitamin e|d-alpha tocopheryl|dl-alpha tocopheryl acetate|tocopherol,vitamin_e,1.0,
+vitamin a palmitate,vitamin a palmitate|retinyl palmitate|vitamin a,vitamin_a,0.0005,
+biotin,biotin|d-biotin|vitamin b7,biotin,0.01,1 percent trituration basis
+folate,folic acid|folate|5-mthf|l-methylfolate,folate,1.0,
+vitamin b12,vitamin b12|cyanocobalamin|methylcobalamin|vitamin b-12,vitamin_b12,0.01,1 percent trituration basis
+magnesium oxide,magnesium oxide|mag oxide|magnesium oxide powder,calcium_magnesium,0.60,Elemental magnesium fraction
+magnesium citrate,magnesium citrate|mag citrate,calcium_magnesium,0.16,Elemental magnesium fraction
+magnesium glycinate,magnesium glycinate|magnesium bisglycinate,calcium_magnesium,0.14,Elemental magnesium fraction
+calcium carbonate,calcium carbonate|cal carbonate,calcium_magnesium,0.40,Elemental calcium fraction
+zinc oxide,zinc oxide,trace_minerals,0.80,Elemental zinc fraction
+zinc picolinate,zinc picolinate,trace_minerals,0.20,Elemental zinc fraction
+selenium,selenium|selenomethionine|l-selenomethionine,trace_minerals,0.004,Elemental selenium fraction
+chromium picolinate,chromium picolinate,trace_minerals,0.12,Elemental chromium fraction
+ferrous fumarate,ferrous fumarate|iron fumarate,iron,0.33,Elemental iron fraction
+l-theanine,l-theanine|theanine|suntheanine,amino_acids,1.0,
+l-arginine,l-arginine|arginine|l-arginine hcl,amino_acids,1.0,
+l-citrulline,l-citrulline|citrulline|citrulline malate,amino_acids,1.0,
+creatine monohydrate,creatine monohydrate|creatine,amino_acids,1.0,
+ashwagandha extract,ashwagandha extract|ksm-66|withania somnifera extract|sensoril,botanical_extract,1.0,
+ashwagandha powder,ashwagandha powder|ashwagandha root powder|withania somnifera powder|withania somnifera root powder,botanical_powder,1.0,
+milk thistle extract,milk thistle extract|silymarin|silybum marianum extract,botanical_extract,1.0,
+saw palmetto extract,saw palmetto extract|serenoa repens extract|saw palmetto oil extract,botanical_extract,1.0,
+green tea extract,green tea extract|egcg|camellia sinensis extract,botanical_extract,1.0,
+bacopa extract,bacopa extract|bacopa monnieri extract|bacognize,botanical_extract,1.0,
+rhodiola extract,rhodiola extract|rhodiola rosea extract,botanical_extract,1.0,
+beet root powder,beet root powder|beetroot powder|beta vulgaris powder,botanical_powder,1.0,
+lutein,lutein|lutein 5 percent|floraglo lutein,lutein,0.05,5 percent beadlet basis
+zeaxanthin,zeaxanthin|zeaxanthin isomers,lutein,0.05,5 percent beadlet basis
+fish oil powder,fish oil powder|omega-3 powder|epa dha powder,omega_oil,1.0,
+lactobacillus blend,lactobacillus blend|probiotic blend|lactobacillus acidophilus,probiotic,1.0,
+bromelain,bromelain|bromelain 2400 gdu,enzyme,1.0,
+rice flour,rice flour|rice powder|organic rice flour,excipient,1.0,
+microcrystalline cellulose,microcrystalline cellulose|mcc|cellulose,excipient,1.0,
+magnesium stearate,magnesium stearate|mag stearate|vegetable magnesium stearate,excipient,1.0,
+silicon dioxide,silicon dioxide|silica|sio2,excipient,1.0,
+maltodextrin,maltodextrin|malto,excipient,1.0,
+black pepper extract,black pepper extract|bioperine|piper nigrum extract|piperine,botanical_extract,1.0,
+msm,msm|methylsulfonylmethane,mineral_salt,1.0,

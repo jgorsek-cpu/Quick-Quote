@@ -1,0 +1,7 @@
+.venv/
+var/
+__pycache__/
+*.pyc
+.pytest_cache/
+samples/quote_package_demo.xlsx
+samples/quote_summary_demo.pdf

@@ -1,0 +1,29 @@
+overage_class,multi_ingredient_pct,single_ingredient_pct,notes
+vitamin_a,30.0,25.0,Light and oxygen sensitive; high overage standard
+beta_carotene,30.0,25.0,Oxidation sensitive
+vitamin_c,10.0,8.0,Ascorbic acid and mineral ascorbates
+vitamin_d,25.0,20.0,Potency drift over shelf life
+vitamin_e,10.0,8.0,Tocopherol blends
+vitamin_k,20.0,15.0,K1 and K2 (MK-7)
+thiamine,15.0,12.0,B1
+riboflavin,12.0,10.0,B2
+niacin,10.0,8.0,B3
+pantothenic_acid,15.0,12.0,B5
+vitamin_b6,15.0,12.0,Pyridoxine
+biotin,20.0,15.0,B7 - assay variability
+folate,25.0,20.0,Folic acid and 5-MTHF
+vitamin_b12,30.0,25.0,Cyanocobalamin and methylcobalamin
+calcium_magnesium,3.0,2.0,Macro minerals - stable
+trace_minerals,8.0,5.0,Zinc copper manganese selenium chromium
+iron,5.0,3.0,Stable salts and chelates
+amino_acids,2.0,2.0,Free form amino acids
+botanical_powder,3.0,2.0,Whole herb powders
+botanical_extract,5.0,3.0,Standardized extracts
+coq10,10.0,8.0,Ubiquinone and ubiquinol
+lutein,20.0,15.0,Carotenoid - oxidation sensitive
+probiotic,50.0,40.0,CFU decay over shelf life
+enzyme,15.0,10.0,Activity decay
+omega_oil,10.0,8.0,Oxidation sensitive oils
+mineral_salt,3.0,2.0,Carriers and stable salts
+excipient,2.0,2.0,Flow agents lubricants fillers
+default,5.0,5.0,Applied when class cannot be determined - raises R&D flag

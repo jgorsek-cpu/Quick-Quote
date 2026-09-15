@@ -1,0 +1,17 @@
+key,value,unit,notes
+labor_rate_per_hour,29.39,USD/hr,Direct labor rate
+overhead_rate_per_hour,79.30,USD/hr,Applied overhead rate
+compounding_hours_1,4.25,hours,1 component in formula
+compounding_hours_2_10,4.75,hours,2-10 components in formula
+compounding_hours_11_20,6.75,hours,11-20 components in formula
+compounding_hours_21_plus,11.75,hours,21 or more components in formula
+encapsulation_hours_per_batch,8.67,hours,Single batch run - BOSCH 705 encapsulation
+bottling_bottles_per_hour,286,bottles/hr,CVC1 bottling line throughput
+default_machine,BOSCH 705 + CVC1,text,Assumed when machine not specified
+default_mfg_loss_factor,1.05,multiplier,Yield loss multiplier applied to material cost
+default_potency,1.0,factor,Applied when potency is unknown - raises R&D flag
+cost_range_pct,10.0,percent,Range band around primary cost
+price_variance_flag_pct,50.0,percent,Historical spread threshold for a Purchasing flag
+stale_po_days,365,days,PO age threshold for a Purchasing flag
+uom_sanity_max_per_bottle,5.00,USD,Per-bottle packaging cost above this is demoted to Needs Review
+major_spend_pct,10.0,percent,Line share of primary cost that counts as major spend

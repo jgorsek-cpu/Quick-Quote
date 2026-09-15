@@ -1,0 +1,28 @@
+ACME NUTRITION - QUOTE REQUEST
+
+Customer: Acme Nutrition
+Brand: Acme Sport
+Formula Name: Joint Support Complex 120ct
+Dosage Form: Capsule
+Capsule Size: 0
+Capsule Type: Gelatin
+Serving Size: 2 capsules
+Servings Per Bottle: 60
+Count Per Bottle: 120
+Annual Volume: 8000
+MOQ: 2500
+Timeline: Q1 2027
+
+Ingredient, Part Code, Amount Per Serving, UOM
+Glucosamine Sulfate, , 750, mg
+MSM, , 500, mg
+Turmeric Extract, , 200, mg
+Bromelain, , 50, mg
+Vitamin D3, , 25, mcg
+Boswellia Extract, , 100, mg
+
+Bottle: HDPE Bottle White 250cc
+Cap: Child-Resistant Cap White 53mm
+Label: Pressure Sensitive Body Label
+Cotton: Cotton Coil
+Desiccant: Desiccant Canister

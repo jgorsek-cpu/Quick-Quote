@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quick Quote</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231f3864'/%3E%3Ctext x='16' y='22' font-size='17' font-family='Helvetica,Arial' font-weight='bold' fill='white' text-anchor='middle'%3EQ%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+
+<header class="app">
+  <div class="brand">Quick&nbsp;Quote</div>
+  <div class="tagline">Turns quote sheets and product specs into a review-ready quote package. Prepares quotes &mdash; does not finalise pricing.</div>
+  <div class="refstat" id="ref-status">loading reference data&hellip;</div>
+</header>
+
+<nav class="tabs" role="tablist">
+  <button role="tab" data-view="build"     aria-selected="true">Build a quote</button>
+  <button role="tab" data-view="upload"    aria-selected="false">Upload a quote sheet</button>
+  <button role="tab" data-view="result"    aria-selected="false">Quote package</button>
+  <button role="tab" data-view="quotes"    aria-selected="false">Recent quotes</button>
+  <button role="tab" data-view="reference" aria-selected="false">Reference data</button>
+</nav>
+
+<main>
+
+<!-- ------------------------------------------------------- BUILD -->
+<section class="view" id="view-build">
+  <div class="cols">
+    <div>
+      <div class="card">
+        <h3>Product</h3>
+        <div class="body">
+          <div class="grid" id="product-form">
+            <label class="field">Customer<input id="p-customer" placeholder="e.g. Vitamin Shoppe"></label>
+            <label class="field">Brand<input id="p-brand"></label>
+            <label class="field">Formula name<input id="p-formula_name" placeholder="e.g. Bioactive Heart Health 90ct"></label>
+            <label class="field">Customer SKU<input id="p-customer_sku"></label>
+            <label class="field">Dosage form
+              <select id="p-dosage_form">
+                <option>Capsule</option><option>Tablet</option><option>Powder</option><option>Softgel</option>
+              </select>
+            </label>
+            <label class="field">Capsule size
+              <select id="p-capsule_size"><option value="">Not specified</option></select>
+            </label>
+            <label class="field">Capsule type
+              <select id="p-capsule_type">
+                <option value="">Not specified</option><option>Vegetable</option><option>Gelatin</option>
+              </select>
+            </label>
+            <label class="field">Serving size<input id="p-serving_size" placeholder="e.g. 3 capsules"></label>
+            <label class="field">Servings per bottle<input id="p-servings_per_bottle" type="number" min="1" value="30"></label>
+            <label class="field">Count per bottle<input id="p-count_per_bottle" type="number" min="1" value="90"></label>
+            <label class="field">Volume (bottles)<input id="p-annual_volume_bottles" type="number" min="1" placeholder="required for mfg cost"></label>
+            <label class="field">MOQ<input id="p-moq" type="number" min="0"></label>
+            <label class="field">Timeline<input id="p-timeline" placeholder="e.g. Q1 2027"></label>
+            <label class="field">Machine<input id="p-machine" placeholder="blank = default assumed"></label>
+            <label class="field">Claims<input id="p-claims" placeholder="semicolon separated"></label>
+            <label class="field">Testing<input id="p-testing" placeholder="semicolon separated"></label>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Formula &mdash; select ingredients</h3>
+        <div class="body">
+          <div class="picker">
+            <input class="search" id="ing-search" placeholder="Search 50+ ingredient identities&hellip; try &quot;coq10&quot; or &quot;grape&quot;">
+            <div class="results" id="ing-results"></div>
+          </div>
+          <div class="spacer"></div>
+          <div class="scroll-x">
+            <table id="formula-table">
+              <thead><tr>
+                <th>Ingredient</th><th class="num">mg / serving</th><th>Part code</th>
+                <th>Expected</th><th>Purchasing context</th><th></th>
+              </tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <p class="small muted" id="formula-empty">No ingredients selected yet. Pick from the list above, or type a name that is not in the reference table to see it reported as Unmatched.</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Packaging &mdash; select components</h3>
+        <div class="body">
+          <div class="actions" style="margin-bottom:12px">
+            <button class="btn ghost small" id="pkg-standard">Add standard bottle pack</button>
+            <span class="small muted">capsule shell, bottle, cap, label, neckband, cotton, desiccant, shipper</span>
+          </div>
+          <div class="picker">
+            <input class="search" id="pkg-search" placeholder="Search packaging identities and sizes&hellip;">
+            <div class="results" id="pkg-results"></div>
+          </div>
+          <div class="spacer"></div>
+          <div class="scroll-x">
+            <table id="packaging-table">
+              <thead><tr>
+                <th>Role</th><th>Description</th><th class="num">Qty / bottle</th>
+                <th class="num">Listed cost</th><th>Expected</th><th></th>
+              </tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <p class="small muted" id="packaging-empty">No packaging selected yet.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- live cost panel -->
+    <div class="sticky">
+      <div class="card">
+        <h3>Live estimate</h3>
+        <div class="body" id="live-panel">
+          <p class="empty">Add an ingredient or a packaging component to see costs.</p>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Generate</h3>
+        <div class="body">
+          <div class="actions">
+            <button class="btn" id="generate-btn" disabled>Generate quote package</button>
+          </div>
+          <p class="small muted" style="margin-bottom:0">Produces the six-tab workbook and the customer quote PDF, and files the quote under Recent quotes.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ------------------------------------------------------ UPLOAD -->
+<section class="view" id="view-upload" hidden>
+  <div class="cols">
+    <div>
+      <div class="card">
+        <h3>Upload a customer quote sheet</h3>
+        <div class="body">
+          <div class="dropzone" id="dropzone">
+            <strong>Drop a file here, or click to choose</strong>
+            xlsx &middot; xlsm &middot; pdf &middot; docx &middot; txt &middot; csv
+            <input type="file" id="file-input" hidden accept=".xlsx,.xlsm,.pdf,.docx,.txt,.csv">
+          </div>
+          <div class="spacer"></div>
+          <div class="actions">
+            <button class="btn ghost" id="inspect-btn" disabled>Inspect parse only</button>
+            <button class="btn" id="upload-btn" disabled>Parse and cost</button>
+            <span class="small muted" id="file-name"></span>
+          </div>
+          <p class="small muted">Fields absent from the document are recorded as missing. The parser never fills a blank.</p>
+        </div>
+      </div>
+      <div id="parse-preview"></div>
+    </div>
+    <div class="sticky">
+      <div class="card">
+        <h3>What the parser looks for</h3>
+        <div class="body small">
+          <p style="margin-top:0"><strong>Labelled fields</strong> &mdash; customer, brand, formula, SKU, dosage form, capsule size and type, serving size, servings and count per bottle, volume, MOQ, timeline, claims, testing.</p>
+          <p><strong>An ingredient table</strong> &mdash; a header row naming both an ingredient column and an amount column. Amounts in mg, mcg or g are converted; IU is left unknown rather than guessed.</p>
+          <p><strong>Packaging</strong> &mdash; a component table, or <span class="mono">Bottle: 175cc white HDPE</span> style lines.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ------------------------------------------------------ RESULT -->
+<section class="view" id="view-result" hidden>
+  <div id="result-body"><p class="empty">No quote package yet. Build a quote or upload a quote sheet.</p></div>
+</section>
+
+<!-- ------------------------------------------------------ QUOTES -->
+<section class="view" id="view-quotes" hidden>
+  <div class="card">
+    <h3>Recent quotes</h3>
+    <div class="body tight scroll-x"><div id="quotes-body"></div></div>
+  </div>
+</section>
+
+<!-- --------------------------------------------------- REFERENCE -->
+<section class="view" id="view-reference" hidden>
+  <div id="reference-body"><p class="loading">Loading reference data&hellip;</p></div>
+</section>
+
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

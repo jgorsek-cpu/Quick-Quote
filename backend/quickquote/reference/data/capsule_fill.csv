@@ -1,0 +1,8 @@
+capsule_size,mg_capacity,volume_ml,notes
+000,1000,1.37,Capacity quoted at 0.73 g/mL reference blend density
+00,735,0.95,Capacity quoted at 0.77 g/mL reference blend density
+0,500,0.68,Capacity quoted at 0.74 g/mL reference blend density
+1,400,0.50,Capacity quoted at 0.80 g/mL reference blend density
+2,300,0.37,Capacity quoted at 0.81 g/mL reference blend density
+3,200,0.30,Capacity quoted at 0.67 g/mL reference blend density
+4,150,0.21,Capacity quoted at 0.71 g/mL reference blend density
