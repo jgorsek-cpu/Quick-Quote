@@ -41,7 +41,8 @@ PRICING_SHEET = "Margins"
 # Columns a human fills in. Everything else is context.
 INGREDIENT_COLUMNS = [
     "Part", "Description", "PO Spend", "Cumulative %", "POs", "Latest $/unit",
-    "Identity", "Status", "Overage Class *", "Potency *", "Bulk Density g/mL *",
+    "Identity", "Status", "Overage Class *", "Overage % override", "Potency *",
+    "Bulk Density g/mL *",
     "Suggested Potency", "Suggestion Basis", "Notes",
 ]
 PACKAGING_COLUMNS = [
@@ -55,6 +56,7 @@ class CurationRow:
     row: PoRow
     identity: str | None
     overage_class: str
+    overage_pct: float | None
     potency: float | None
     density: float | None
     density_defaulted: bool
@@ -113,6 +115,7 @@ def build_rows(reference: ReferenceData) -> tuple[list[CurationRow], list[Curati
                     row=row,
                     identity=resolution.canonical if resolution else None,
                     overage_class=entry.overage_class if entry else "",
+                    overage_pct=entry.overage_pct if entry else None,
                     potency=entry.default_potency if entry else None,
                     density=density,
                     density_defaulted=defaulted,
@@ -155,8 +158,8 @@ def export(reference: ReferenceData, destination: Path, limit: int | None = None
     # -- ingredients ---------------------------------------------------
     sheet = book.create_sheet(INGREDIENT_SHEET)
     header(sheet, INGREDIENT_COLUMNS)
-    for width, letter in zip([14, 46, 14, 12, 7, 13, 30, 12, 20, 11, 18, 16, 30, 28],
-                             (get_column_letter(i) for i in range(1, 15))):
+    for width, letter in zip([14, 46, 14, 12, 7, 13, 30, 12, 20, 18, 11, 18, 16, 30, 28],
+                             (get_column_letter(i) for i in range(1, 16))):
         sheet.column_dimensions[letter].width = width
 
     classes = ",".join(sorted(reference.overage))
@@ -168,7 +171,7 @@ def export(reference: ReferenceData, destination: Path, limit: int | None = None
             item.row.part_number, item.row.description, item.row.total_spend,
             item.cumulative, item.row.po_count, item.row.latest_unit_cost,
             item.identity or "", "PROPOSED" if item.identity is None else "resolved",
-            item.overage_class, item.potency,
+            item.overage_class, item.overage_pct, item.potency,
             None if item.density_defaulted else item.density,
             item.suggested_potency, item.suggestion_basis, "",
         ]
@@ -177,7 +180,7 @@ def export(reference: ReferenceData, destination: Path, limit: int | None = None
         sheet.cell(row=index, column=3).number_format = '"$"#,##0'
         sheet.cell(row=index, column=4).number_format = "0.0%"
         sheet.cell(row=index, column=6).number_format = '"$"#,##0.0000'
-        for column in (9, 10, 11):
+        for column in (9, 10, 11, 12):
             sheet.cell(row=index, column=column).fill = PatternFill("solid", fgColor=amber)
         class_rule.add(sheet.cell(row=index, column=9))
         if item.cumulative <= 0.80:
@@ -334,7 +337,7 @@ def apply(worksheet: Path, data_dir: Path) -> dict:
     from openpyxl import load_workbook
 
     book = load_workbook(worksheet, data_only=True)
-    changed = {"potency": 0, "overage_class": 0, "density": 0, "role": 0,
+    changed = {"potency": 0, "overage_class": 0, "overage_override": 0, "density": 0, "role": 0,
                "units_per_container": 0, "machines": 0, "run_rates": 0,
                "cleaning_hours": 0, "margins": 0}
 
@@ -371,6 +374,11 @@ def apply(worksheet: Path, data_dir: Path) -> dict:
                 record["overage_class"] = str(overage).strip().lower()
                 changed["overage_class"] += 1
 
+            override = get("Overage % override")
+            if _changed(override, record.get("overage_pct")):
+                record["overage_pct"] = f"{float(override):g}"
+                changed["overage_override"] = changed.get("overage_override", 0) + 1
+
             density = get("Bulk Density g/mL *")
             # Compare against whatever the engine would use today, so accepting
             # an inherited class default is correctly read as "no change".
@@ -384,7 +392,8 @@ def apply(worksheet: Path, data_dir: Path) -> dict:
                 changed["density"] += 1
 
         _write(identity_path,
-               ["canonical", "aliases", "overage_class", "default_potency", "notes"],
+               ["canonical", "aliases", "overage_class", "overage_pct",
+                "default_potency", "notes"],
                identities.values())
         _write(density_path, ["key", "bulk_density_g_ml", "notes"], densities.values())
 

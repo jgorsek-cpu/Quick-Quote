@@ -177,7 +177,7 @@ Tests:
 .venv/Scripts/python -m pytest          # Windows
 ```
 
-196 tests.
+199 tests.
 
 ---
 
@@ -374,7 +374,7 @@ Two properties make it safe to hand round:
 | File | Holds |
 |---|---|
 | `po_history.csv` | Part, description, UoM, latest/min/max cost, latest PO date, vendor, counts |
-| `ingredient_identity.csv` | Canonical ingredient → aliases, overage class, potency |
+| `ingredient_identity.csv` | Canonical ingredient → aliases, overage class, per-material overage override, potency |
 | `packaging_identity.csv` | Canonical packaging → aliases, role, whether size is required |
 | `distinct_guard.csv` | Identity pairs that must never be matched |
 | `overage.csv` | Overage % by class, multi- and single-ingredient |
@@ -426,7 +426,7 @@ backend/quickquote/
   schemas.py   the one shape every producer feeds and every consumer reads
   store.py     quote registry and artifacts
 frontend/      index.html · static/app.js · static/styles.css
-tests/         196 tests
+tests/         199 tests
 samples/       demo quote sheets and generated artifacts
 ```
 

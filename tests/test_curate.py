@@ -207,6 +207,19 @@ class TestRoundTrip:
         assert float(rows[identity]["bulk_density_g_ml"]) == 0.62
         assert "Confirmed" in rows[identity]["notes"]
 
+    def test_a_material_overage_override_reaches_the_engine(self, worksheet, data_dir):
+        """One unusual material can be set without moving its whole class."""
+        book = load_workbook(worksheet)
+        sheet = book[INGREDIENT_SHEET]
+        header = [cell.value for cell in sheet[1]]
+        identity = sheet.cell(row=2, column=header.index("Identity") + 1).value
+        sheet.cell(row=2, column=header.index("Overage % override") + 1).value = 18
+        book.save(worksheet)
+
+        assert apply(worksheet, data_dir)["overage_override"] == 1
+        entry = load_reference_data(data_dir).identity_entry(identity)
+        assert entry.overage_pct == 18
+
     def test_a_run_rate_reaches_the_engine(self, worksheet, data_dir):
         book = load_workbook(worksheet)
         sheet = book["Process Steps"]

@@ -49,6 +49,7 @@ class Classification:
     overage_class: str
     overage_pct: float
     overage_defaulted: bool
+    overage_source: str = ""
 
 
 def classify_by_name(name: str | None) -> str | None:
@@ -98,6 +99,20 @@ def classify_ingredient(
     if overage_class == "default":
         class_source_defaulted = True
 
+    # A material-specific overage wins over its class, so an unusual material
+    # can be set without moving the whole group it belongs to.
+    override = resolution.entry.overage_pct if resolution is not None else None
+    if override is not None:
+        return Classification(
+            potency=potency,
+            potency_source=potency_source,
+            potency_defaulted=potency_defaulted,
+            overage_class=overage_class,
+            overage_pct=override / 100.0,
+            overage_defaulted=False,
+            overage_source=f"Material-specific overage for '{resolution.canonical}'",
+        )
+
     overage_pct = reference.overage_pct(overage_class, multi_ingredient)
     if overage_pct is None:
         overage_class = "default"
@@ -111,4 +126,8 @@ def classify_ingredient(
         overage_class=overage_class,
         overage_pct=overage_pct,
         overage_defaulted=class_source_defaulted,
+        overage_source=(
+            "Reference default - class could not be determined"
+            if class_source_defaulted else f"Overage class '{overage_class}'"
+        ),
     )

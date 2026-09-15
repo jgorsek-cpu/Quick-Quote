@@ -62,6 +62,9 @@ class IdentityEntry:
     canonical: str
     aliases: tuple[str, ...]
     overage_class: str = "default"
+    # A per-material overage that overrides the class. Blank means "inherit",
+    # so the class table stays the single place a whole group is changed.
+    overage_pct: float | None = None
     default_potency: float | None = None
     role: str = ""
     size_required: bool = False
@@ -474,6 +477,7 @@ def _load_identities(rows: Iterable[dict[str, str]], packaging: bool) -> list[Id
                 canonical=canonical,
                 aliases=aliases,
                 overage_class=(row.get("overage_class") or "default").strip().lower(),
+                overage_pct=_to_float(row.get("overage_pct")),
                 default_potency=_to_float(row.get("default_potency")),
                 role=(row.get("role") or "").strip().lower(),
                 size_required=str(row.get("size_required", "")).strip() in {"1", "true", "yes"},

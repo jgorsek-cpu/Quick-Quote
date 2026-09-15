@@ -65,6 +65,28 @@ class TestDefaults:
         assert costed.overage_pct == pytest.approx(0.05)
 
 
+class TestOverageSource:
+    def test_a_material_override_beats_its_class(self, reference):
+        import dataclasses
+
+        from quickquote.engine.classify import classify_ingredient
+        from quickquote.engine.identity import resolve_identity
+
+        resolution = resolve_identity("Coenzyme Q10", reference)
+        by_class = classify_ingredient("Coenzyme Q10", reference, resolution,
+                                       None, None, True)
+        assert by_class.overage_pct == pytest.approx(0.10)
+        assert "class" in by_class.overage_source
+
+        entry = dataclasses.replace(resolution.entry, overage_pct=18.0)
+        overridden = classify_ingredient(
+            "Coenzyme Q10", reference,
+            dataclasses.replace(resolution, entry=entry), None, None, True)
+        assert overridden.overage_pct == pytest.approx(0.18)
+        assert not overridden.overage_defaulted
+        assert "Material-specific" in overridden.overage_source
+
+
 class TestPackagingCost:
     def test_capsule_shells_are_priced_per_thousand(self, reference):
         line = PackagingLine("capsule_shell", "Vegetable Capsule Shell Size 00")
