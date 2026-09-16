@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import date
 
 from ..config import ACCEPTED, NEEDS_REVIEW, UNMATCHED
-from ..reference.loader import ReferenceData
+from ..reference.loader import MeasuredDensity, ReferenceData
 from ..schemas import (
     CostedIngredient,
     CostedPackaging,
@@ -186,9 +186,41 @@ def build_flags(
         flags.append(Flag(RND, "Ingredient list", "No ingredient list was found in the source document.", "blocking"))
 
     for line in ingredients:
-        if line.potency_source.startswith("Default"):
+        if line.potency_source.startswith("Claim basis unresolved"):
+            # Not a gap in the data: R&D hold every basis, and which one the
+            # label claims is the customer's decision, not the engine's.
+            flags.append(
+                Flag(
+                    RND,
+                    line.name,
+                    "Several claim bases are on file for this part and the label "
+                    f"does not say which is claimed. {line.potency_source[len('Claim basis unresolved - '):]}. "
+                    "Costed at potency 1.0 until one is chosen.",
+                )
+            )
+        elif line.potency_source.startswith("Default"):
             flags.append(
                 Flag(RND, line.name, "Potency unknown - default 1.0 applied. Confirm form and claim basis.")
+            )
+        if "no gummy figure" in line.overage_source:
+            flags.append(
+                Flag(
+                    RND,
+                    line.name,
+                    "R&D's overage guideline gives no gummy figure for class "
+                    f"'{line.overage_class}' - the caps/tablets/powder figure "
+                    f"({(line.overage_pct or 0) * 100:.0f}%) was used instead. "
+                    "Gummy losses are typically higher; confirm the right overage.",
+                )
+            )
+        elif "not in R&D's guideline" in line.overage_source:
+            flags.append(
+                Flag(
+                    RND,
+                    line.name,
+                    f"Overage class '{line.overage_class}' is not in R&D's guideline; "
+                    f"a working value of {(line.overage_pct or 0) * 100:.0f}% was applied.",
+                )
             )
         if line.overage_class == "default":
             flags.append(
@@ -212,15 +244,32 @@ def build_flags(
         caps_per_serving = max(1, round(product.count_per_bottle / product.servings_per_bottle))
 
     fill_ml = 0.0
+    fill_mg = 0.0
+    # The same blend at the loosest lot on file, which is what a capsule
+    # actually has to swallow on a bad day.
+    worst_ml = 0.0
     density_defaulted: list[str] = []
+    wide_spread: list[tuple[str, MeasuredDensity]] = []
     for line in ingredients:
         milligrams = line.formula_mg_per_serving
         if not milligrams:
             continue
-        density, defaulted = reference.density_for(line.identity, line.overage_class)
-        if defaulted:
-            density_defaulted.append(line.name)
+        measured = reference.measured_density_for(
+            line.input_part_code, line.match.matched_code
+        )
+        if measured is not None:
+            # R&D's own lot measurements beat any class average.
+            density, worst = measured.median_g_ml, measured.min_g_ml
+            if measured.wide_spread:
+                wide_spread.append((line.name, measured))
+        else:
+            density, defaulted = reference.density_for(line.identity, line.overage_class)
+            worst = density
+            if defaulted:
+                density_defaulted.append(line.name)
         fill_ml += (milligrams / 1000.0) / density
+        worst_ml += (milligrams / 1000.0) / worst
+        fill_mg += milligrams
 
     for name in density_defaulted:
         flags.append(
@@ -233,6 +282,18 @@ def build_flags(
             )
         )
 
+    for name, measured in wide_spread:
+        flags.append(
+            Flag(
+                RND,
+                name,
+                f"Bulk density varies across lots: {measured.min_g_ml:g}-"
+                f"{measured.max_g_ml:g} g/mL over {measured.lot_count} lots. The fill "
+                f"check uses the median ({measured.median_g_ml:g}); a loose lot takes "
+                "more room.",
+            )
+        )
+
     if shell_ml and fill_ml:
         per_capsule_ml = fill_ml / caps_per_serving
         utilisation = per_capsule_ml / shell_ml
@@ -240,19 +301,80 @@ def build_flags(
             f"{per_capsule_ml:.3f} mL per capsule against {shell_ml:.2f} mL of "
             f"size {capsule_size} shell ({utilisation:.0%})"
         )
+        # R&D quote fill against a tamped density, not a loose one: an
+        # encapsulator densifies the blend as it fills. Where the loose
+        # volume overflows but R&D's own calculator says it fits, the line is
+        # still worth quoting -- it just has to be proven on a trial.
+        blend_density = (fill_mg / 1000.0) / fill_ml if fill_ml and fill_mg else None
+        tamped_capacity = reference.tamped_capacity_mg(
+            capsule_size, blend_density
+        ) if blend_density else None
+        fill_per_capsule_mg = (fill_mg / caps_per_serving) if fill_mg else None
+
         if utilisation > 1.0:
-            message = (
-                f"Fill volume exceeds the shell: {detail}. A larger capsule, more "
-                "capsules per serving, or reformulation is required."
+            fits_tamped = (
+                tamped_capacity is not None
+                and fill_per_capsule_mg is not None
+                and fill_per_capsule_mg <= tamped_capacity
             )
-            flags.append(Flag(RND, "Capsule fill", message, "blocking"))
-            flags.append(Flag(OPERATIONS, "Capsule fill", message, "blocking"))
+            if fits_tamped:
+                message = (
+                    f"Loose fill volume exceeds the shell ({detail}), but R&D's "
+                    f"capsule calculator holds it once tamped: "
+                    f"{fill_per_capsule_mg:,.0f} mg against {tamped_capacity:,.0f} mg "
+                    f"at {reference.tamping_steps} density steps. Confirm on an "
+                    "encapsulation trial before committing."
+                )
+                flags.append(Flag(RND, "Capsule fill", message))
+                flags.append(Flag(OPERATIONS, "Capsule fill", message))
+            else:
+                message = (
+                    f"Fill volume exceeds the shell: {detail}. A larger capsule, more "
+                    "capsules per serving, or reformulation is required."
+                )
+                if tamped_capacity is not None and fill_per_capsule_mg is not None:
+                    message += (
+                        f" Tamping does not close the gap: {fill_per_capsule_mg:,.0f} mg "
+                        f"against {tamped_capacity:,.0f} mg of tamped capacity."
+                    )
+                larger = reference.recommend_capsule_size(
+                    fill_per_capsule_mg, blend_density
+                )
+                if larger is not None and larger.capsule_size != capsule_size:
+                    message += (
+                        f" Size {larger.capsule_size.upper()} would hold it "
+                        f"({larger.capacity_mg:,.0f} mg tamped capacity)."
+                    )
+                flags.append(Flag(RND, "Capsule fill", message, "blocking"))
+                flags.append(Flag(OPERATIONS, "Capsule fill", message, "blocking"))
         elif utilisation > reference.near_capacity_threshold:
             message = f"Fill is near shell capacity: {detail}. Confirm on a trial run."
             flags.append(Flag(RND, "Capsule fill", message))
             flags.append(Flag(OPERATIONS, "Capsule fill", message))
+        elif worst_ml > fill_ml and worst_ml / caps_per_serving > shell_ml:
+            flags.append(
+                Flag(
+                    RND,
+                    "Capsule fill",
+                    f"Fits at median density ({detail}) but not at the loosest lots on "
+                    f"file: {worst_ml / caps_per_serving:.3f} mL against {shell_ml:.2f} mL. "
+                    "Confirm the incoming density or allow a larger shell.",
+                )
+            )
         elif utilisation < reference.underfill_threshold:
-            smaller = _smaller_shell(reference, per_capsule_ml, capsule_size)
+            # R&D's calculator picks the smallest shell that holds the fill at
+            # the tamped density; without a density it falls back to the loose
+            # volume, which only ever recommends a larger shell than needed.
+            fit = (
+                reference.recommend_capsule_size(fill_per_capsule_mg, blend_density)
+                if blend_density and fill_per_capsule_mg
+                else None
+            )
+            smaller = None
+            if fit is not None and fit.volume_ml < shell_ml:
+                smaller = fit.capsule_size.upper()
+            elif fit is None:
+                smaller = _smaller_shell(reference, per_capsule_ml, capsule_size)
             message = f"Capsule is over-sized for the fill: {detail}."
             if smaller:
                 message += (

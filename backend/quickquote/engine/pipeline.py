@@ -127,6 +127,9 @@ def run_pipeline(
 
     mfg_loss = product.mfg_loss_factor or reference.mfg_loss_factor
     multi_ingredient = len(parsed.formula) > 1
+    # R&D price gummy overage separately: depositing and curing cost far
+    # more potency than blending and encapsulating.
+    gummy = "gummy" in (product.dosage_form or "").lower()
 
     # -- ingredients ---------------------------------------------------
     ingredients: list[CostedIngredient] = []
@@ -148,6 +151,7 @@ def run_pipeline(
             input_part_code=line.part_code,
             matched_code=match.matched_code,
             multi_ingredient=multi_ingredient,
+            gummy=gummy,
         )
         costed = cost_ingredient(
             line, match, classification, reference, product.servings_per_bottle, mfg_loss

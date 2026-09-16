@@ -131,6 +131,7 @@ class CostedIngredient:
     potency_source: str = ""
     overage_pct: float | None = None
     overage_class: str | None = None
+    overage_source: str = ""
     formula_mg_per_serving: float | None = None
     kg_per_bottle: float | None = None
     cost_per_kg: float | None = None

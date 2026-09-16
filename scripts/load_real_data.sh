@@ -6,6 +6,11 @@
 # The first file is the workbook holding the inventory master (the sheet with
 # PART and DESCRIPTION columns); the rest are purchase-order exports.
 #
+# R&D's four reference workbooks are loaded too when they are found in the
+# directory named by QUICKQUOTE_RND_DIR (default: the current directory).
+# Without them the shipped overage and capsule tables are used and the
+# part-keyed potency and density tables are simply absent.
+#
 # Output goes to a directory that is NOT committed, because these tables carry
 # real vendor pricing. Start the app against it with:
 #
@@ -41,6 +46,28 @@ echo
 echo "==> Aggregating purchase-order history against the inventory master"
 PYTHONPATH=backend "$PY" -m quickquote.reference.ingest \
   "${PO_ARGS[@]}" --item-master "$MASTER" --out "$TARGET/po_history.csv"
+
+RND_DIR="${QUICKQUOTE_RND_DIR:-.}"
+RND_ARGS=()
+for pair in "overage:Overage_Guidelines" "potency:Potency_of_Material" \
+            "testing:RM_Testing" "capsules:Capsule_Size__Calculator"; do
+  flag="${pair%%:*}"
+  # R&D export these from Google Sheets, so the names pick up suffixes.
+  found=$(find "$RND_DIR" -maxdepth 1 -name "*${pair#*:}*.xlsx" 2>/dev/null | head -1)
+  if [ -n "$found" ]; then RND_ARGS+=(--"$flag" "$found"); fi
+done
+
+if [ "${#RND_ARGS[@]}" -gt 0 ]; then
+  echo
+  echo "==> Loading R&D's reference workbooks from $RND_DIR"
+  PYTHONPATH=backend "$PY" -m quickquote.reference.ingest_rnd \
+    "${RND_ARGS[@]}" --out-dir "$TARGET"
+else
+  echo
+  echo "==> No R&D workbooks found in $RND_DIR - using the shipped tables."
+  echo "    Set QUICKQUOTE_RND_DIR to the folder holding Overage_Guidelines.xlsx,"
+  echo "    Potency_of_Material.xlsx, RM_Testing.xlsx and Capsule_Size__Calculator.xlsx."
+fi
 
 echo
 echo "==> Proposing identities for parts the curated tables do not cover"

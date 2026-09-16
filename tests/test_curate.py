@@ -7,6 +7,7 @@ from openpyxl import load_workbook
 
 from quickquote.reference.curate import (
     INGREDIENT_SHEET,
+    LOOKUP_SHEET,
     PACKAGING_SHEET,
     PRICING_SHEET,
     _changed,
@@ -154,8 +155,10 @@ class TestComponentClassification:
 class TestWorksheet:
     def test_it_carries_a_tab_for_each_owner(self, worksheet):
         book = load_workbook(worksheet)
-        assert book.sheetnames == ["Ingredients", "Packaging", "Machines",
-                                   "Process Steps", "Margins"]
+        visible = [name for name in book.sheetnames
+                   if book[name].sheet_state == "visible"]
+        assert visible == ["Ingredients", "Packaging", "Machines",
+                           "Process Steps", "Margins"]
 
     def test_the_process_steps_tab_names_every_gap(self, worksheet, reference):
         """Operations needs one place showing what stops a line being quotable."""
@@ -171,9 +174,17 @@ class TestWorksheet:
         assert any(row["Status"] == "No work centre assigned" for row in gummy)
         assert all(row["Core Step"] in ("core", "ancillary") for row in rows)
 
-    def test_the_overage_column_offers_only_valid_classes(self, worksheet, reference):
-        sheet = load_workbook(worksheet)[INGREDIENT_SHEET]
-        assert sheet.data_validations.dataValidation
+    def test_the_overage_column_offers_every_class(self, worksheet, reference):
+        """Excel truncates an inline list at 255 characters, which is fewer
+        classes than R&D's guideline carries, so the list is a range."""
+        book = load_workbook(worksheet)
+        rule = book[INGREDIENT_SHEET].data_validations.dataValidation[0]
+        assert rule.formula1.startswith(f"'{LOOKUP_SHEET}'!")
+
+        offered = {row[0] for row in book[LOOKUP_SHEET].iter_rows(
+            min_row=2, max_col=1, values_only=True) if row[0]}
+        assert offered == set(reference.overage)
+        assert book[LOOKUP_SHEET].sheet_state == "hidden"
 
 
 class TestRoundTrip:

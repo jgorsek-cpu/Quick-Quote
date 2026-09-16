@@ -37,6 +37,7 @@ PACKAGING_SHEET = "Packaging"
 MACHINE_SHEET = "Machines"
 STEPS_SHEET = "Process Steps"
 PRICING_SHEET = "Margins"
+LOOKUP_SHEET = "Lookups"
 
 # Columns a human fills in. Everything else is context.
 INGREDIENT_COLUMNS = [
@@ -162,8 +163,16 @@ def export(reference: ReferenceData, destination: Path, limit: int | None = None
                              (get_column_letter(i) for i in range(1, 16))):
         sheet.column_dimensions[letter].width = width
 
-    classes = ",".join(sorted(reference.overage))
-    class_rule = DataValidation(type="list", formula1=f'"{classes[:250]}"', allow_blank=True)
+    # Excel caps an inline list at 255 characters, and R&D's guideline carries
+    # more classes than that. The list therefore lives on its own sheet and is
+    # referenced as a range, so every class is offered rather than the first
+    # few hundred characters' worth.
+    classes = sorted(reference.overage)
+    class_rule = DataValidation(
+        type="list",
+        formula1=f"'{LOOKUP_SHEET}'!$A$2:$A${len(classes) + 1}",
+        allow_blank=True,
+    )
     sheet.add_data_validation(class_rule)
 
     for index, item in enumerate(ingredients, start=2):
@@ -298,6 +307,14 @@ def export(reference: ReferenceData, destination: Path, limit: int | None = None
         sheet.cell(row=index, column=3).fill = PatternFill("solid", fgColor=amber)
     sheet.cell(row=len(reference.pricing) + 3, column=1,
                value="Margin = (price - cost) / price. Finance owns these numbers.").font = Font(italic=True)
+
+    # -- the hidden list the overage dropdown reads ---------------------
+    lookup = book.create_sheet(LOOKUP_SHEET)
+    lookup.cell(row=1, column=1, value="Overage classes (R&D)")
+    for index, name in enumerate(classes, start=2):
+        lookup.cell(row=index, column=1, value=name)
+    lookup.column_dimensions["A"].width = 28
+    lookup.sheet_state = "hidden"
 
     destination.parent.mkdir(parents=True, exist_ok=True)
     book.save(destination)

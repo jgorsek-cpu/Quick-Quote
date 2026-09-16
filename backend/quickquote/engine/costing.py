@@ -42,6 +42,7 @@ def cost_ingredient(
         potency_source=classification.potency_source,
         overage_pct=classification.overage_pct,
         overage_class=classification.overage_class,
+        overage_source=classification.overage_source,
     )
     if line.notes:
         costed.notes.append(line.notes)

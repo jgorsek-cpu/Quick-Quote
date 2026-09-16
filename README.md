@@ -177,7 +177,7 @@ Tests:
 .venv/Scripts/python -m pytest          # Windows
 ```
 
-198 tests.
+242 tests.
 
 ---
 
@@ -245,6 +245,43 @@ formula mg/serving = claimed mg / potency × (1 + overage)
 kg/bottle          = formula mg/serving × servings per bottle / 1e6 × yield loss
 cost/bottle        = kg/bottle × latest PO cost per kg
 ```
+
+**Overage and potency come from R&D's own sheets**, loaded by
+`quickquote.reference.ingest_rnd`:
+
+```bash
+PYTHONPATH=backend .venv/bin/python -m quickquote.reference.ingest_rnd \
+  --overage  Overage_Guidelines.xlsx \
+  --potency  Potency_of_Material.xlsx \
+  --testing  RM_Testing.xlsx \
+  --capsules Capsule_Size__Calculator.xlsx \
+  --out-dir  var/reference
+```
+
+Four things about those sheets shape the engine:
+
+*Overage has four columns, not two.* R&D price multi- and single-ingredient
+formulas separately, and the same again for gummies, where depositing and
+curing cost far more potency: vitamin C is 20%/10% in a capsule and 40%/30% in
+a gummy. The dosage form picks the column. Where R&D leave the gummy column
+blank — probiotics read "Strain Dependent" — the caps figure is used and the
+substitution is stated on the quote, never passed off as theirs.
+
+*Potency is per part **and claim basis**.* The asterisk in R&D's description
+marks the moiety the label claims, so one part carries several potencies:
+`L-Arginine HCl*` is 0.983 of the purchased salt, `L-Arginine* HCl` is 0.813.
+Fourteen parts have more than one. No lookup can choose between them, so the
+line is costed at potency 1.0 and the bases are named for a person to pick.
+
+*Bulk density is measured, by lot.* 2,367 measurements across 571 parts. The
+median is the working value; 46 parts vary by more than 1.5x between lots, and
+where one is in a formula the fill check says so and gives the range.
+
+*Capsule capacity is a grid, not a number.* R&D tabulate capacity by size
+against blend density, and model tamping by rounding the measured density
+**down** to a chart column and then advancing two columns — 0.50 g/mL is read
+at 0.70. A fill that overflows loose but fits tamped is quoted with that said,
+rather than refused.
 
 `min_unit_cost_ever` and `max_unit_cost_ever` are reported as context only; they
 never drive the range. The ±10% band applies to PO-derived material and
@@ -377,9 +414,11 @@ Two properties make it safe to hand round:
 | `ingredient_identity.csv` | Canonical ingredient → aliases, overage class, per-material overage override, potency |
 | `packaging_identity.csv` | Canonical packaging → aliases, role, whether size is required |
 | `distinct_guard.csv` | Identity pairs that must never be matched |
-| `overage.csv` | Overage % by class, multi- and single-ingredient |
-| `potency.csv` | Part code → potency factor |
-| `capsule_fill.csv` | Capsule size → mg capacity |
+| `overage.csv` | Overage % by class: multi- and single-ingredient, and the same again for gummies |
+| `potency.csv` | Part code + claim basis → potency factor |
+| `capsule_fill.csv` | Capsule size → mg capacity and shell volume |
+| `capsule_capacity.csv` | Capsule size × blend density → mg capacity (R&D's chart) |
+| `bulk_density_measured.csv` | Part code → median, min and max bulk density across received lots |
 | `labor_rates.csv` | Rates, compounding bands, thresholds, defaults, volume ladder |
 | `machines.csv` | Machine, work centre, labor/OH, run rate, capsule band |
 | `work_centres.csv` | Labor and OH for compounding and bottling |
@@ -426,7 +465,7 @@ backend/quickquote/
   schemas.py   the one shape every producer feeds and every consumer reads
   store.py     quote registry and artifacts
 frontend/      index.html · static/app.js · static/styles.css
-tests/         198 tests
+tests/         242 tests
 samples/       demo quote sheets and generated artifacts
 ```
 
@@ -438,6 +477,12 @@ samples/       demo quote sheets and generated artifacts
 - **Manufacturing covers compounding, encapsulation and bottling.** The
   operational price sheet also carries tariffs, freight, remnants, testing by
   ingredient count and customer-specific deductions; those are not modelled here.
+- **Overage, potency, bulk density and capsule capacity come from R&D.**
+  Their four working sheets are loaded by `ingest_rnd.py`. Two gaps remain
+  in them: R&D record probiotic overage in a gummy as "Strain Dependent"
+  rather than a number, and vitamin B12, omega oils and excipients have no
+  row at all. Each is carried as a stated working value that flags itself,
+  never as R&D's answer.
 - **Encapsulation run rates are still placeholders.** The capsules-per-hour
   figures in `machines.csv` are scaled from one calibrated batch. Bottling
   speed, every labor/OH rate, the machine selection bands and the testing

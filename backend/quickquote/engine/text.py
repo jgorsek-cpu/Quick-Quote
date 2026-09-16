@@ -22,7 +22,9 @@ SHORT_ALIAS_LEN = 5
 _NON_ALNUM = re.compile(r"[^a-z0-9]+")
 _WS = re.compile(r"\s+")
 
-_CAPSULE_SIZE_RE = re.compile(r"\bsize\s*(000|00|0|1|2|3|4)\b")
+_CAPSULE_SIZE_RE = re.compile(
+    r"\bsize\s*(000|00el|00e|00|0el|0e|0|1|2|3|4)\b", re.IGNORECASE
+)
 _BARE_CAPSULE_SIZE_RE = re.compile(r"\b(000|00)\b")
 _VOLUME_RE = re.compile(r"\b(\d+(?:\.\d+)?)\s*(cc|ml)\b")
 _NECK_RE = re.compile(r"\b(\d+(?:\.\d+)?)\s*mm\b")
@@ -207,7 +209,7 @@ def normalise_capsule_size(value: str | None) -> str | None:
     match = _CAPSULE_SIZE_RE.search(text) or _CAPSULE_SIZE_RE.search(f"size {text}")
     if match:
         return match.group(1)
-    if text in {"000", "00", "0", "1", "2", "3", "4"}:
+    if text in {"000", "00el", "00e", "00", "0el", "0e", "0", "1", "2", "3", "4"}:
         return text
     return None
 

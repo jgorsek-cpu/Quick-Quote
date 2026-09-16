@@ -1,6 +1,10 @@
 capsule_size,mg_capacity,volume_ml,notes
 000,1000,1.37,Capacity quoted at 0.73 g/mL reference blend density
+00e,714,1.02,R&D Capsule Size Calculator - elongated shell; capacity quoted at 0.7 g/mL
+00el,714,1.02,R&D Capsule Size Calculator - elongated shell; capacity quoted at 0.7 g/mL
 00,735,0.95,Capacity quoted at 0.77 g/mL reference blend density
+0e,546,0.78,R&D Capsule Size Calculator - elongated shell; capacity quoted at 0.7 g/mL
+0el,546,0.78,R&D Capsule Size Calculator - elongated shell; capacity quoted at 0.7 g/mL
 0,500,0.68,Capacity quoted at 0.74 g/mL reference blend density
 1,400,0.50,Capacity quoted at 0.80 g/mL reference blend density
 2,300,0.37,Capacity quoted at 0.81 g/mL reference blend density

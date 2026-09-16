@@ -153,8 +153,18 @@ def reference_overview(reference: ReferenceData) -> dict:
         },
         "capsule_fill_mg": dict(sorted(reference.capsule_fill.items())),
         "overage_classes": {
-            name: {"multi_pct": values["multi"] * 100, "single_pct": values["single"] * 100}
-            for name, values in sorted(reference.overage.items())
+            name: {
+                "label": entry.label,
+                "multi_pct": None if entry.multi is None else entry.multi * 100,
+                "single_pct": None if entry.single is None else entry.single * 100,
+                "gummy_multi_pct": None if entry.gummy_multi is None else entry.gummy_multi * 100,
+                "gummy_single_pct": (
+                    None if entry.gummy_single is None else entry.gummy_single * 100
+                ),
+                "source": entry.source,
+                "notes": entry.notes,
+            }
+            for name, entry in sorted(reference.overage.items())
         },
         "guard_pairs": [
             {"pair": sorted(pair), "reason": reference.guard_reasons.get(pair, "")}

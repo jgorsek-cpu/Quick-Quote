@@ -37,10 +37,15 @@ class TestRawMaterialCost:
         assert costed.cost_high == pytest.approx(costed.cost_per_bottle * 1.1)
 
     def test_potency_divides_the_claim(self, reference):
-        """Magnesium oxide is 60% elemental, so more material is needed."""
+        """Magnesium oxide is 60% elemental, so more material is needed.
+
+        The overage comes from R&D's guideline, so it is read from the table
+        rather than written here: their number is the one that must apply.
+        """
         costed = cost_one("Magnesium Oxide", 100.0, reference)
+        overage = reference.overage_pct(costed.overage_class, multi_ingredient=True)
         assert costed.potency == pytest.approx(0.60)
-        assert costed.formula_mg_per_serving == pytest.approx(100 / 0.60 * 1.03)
+        assert costed.formula_mg_per_serving == pytest.approx(100 / 0.60 * (1 + overage))
 
     def test_unmatched_line_has_no_cost(self, reference):
         costed = cost_one("Aged Garlic Extract", 200.0, reference)

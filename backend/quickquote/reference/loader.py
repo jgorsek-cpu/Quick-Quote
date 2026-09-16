@@ -151,6 +151,103 @@ class TestingBand:
 
 
 @dataclass(frozen=True)
+class OverageClass:
+    """One row of R&D's overage guideline.
+
+    R&D price four cases, not two: multi- and single-ingredient formulas, and
+    the same again for gummies, where losses during depositing and curing are
+    far higher. A value R&D records as non-numeric -- probiotics in a gummy
+    are "Strain Dependent" -- is held as ``None`` and refused, never guessed.
+    """
+
+    key: str
+    label: str = ""
+    multi: float | None = None
+    single: float | None = None
+    gummy_multi: float | None = None
+    gummy_single: float | None = None
+    source: str = ""
+    notes: str = ""
+
+    def pct(self, multi_ingredient: bool, gummy: bool = False) -> float | None:
+        if gummy:
+            return self.gummy_multi if multi_ingredient else self.gummy_single
+        return self.multi if multi_ingredient else self.single
+
+    @property
+    def from_guideline(self) -> bool:
+        return "NOT IN" not in self.source.upper()
+
+
+@dataclass(frozen=True)
+class PotencyClaim:
+    """One claim basis for one part.
+
+    The asterisk in R&D's description marks the moiety the label claims, so a
+    single part can carry several potencies: claiming ``L-Arginine* HCl`` is
+    0.813 of the purchased salt, claiming ``L-Arginine HCl*`` is 0.983. Where
+    a part has more than one, the engine names them and refuses to choose.
+    """
+
+    part_code: str
+    claim_description: str
+    potency_factor: float
+    claims_whole_material: bool = False
+    percent_element: str = ""
+    element_conversion: str = ""
+    min_purity: str = ""
+    remarks: str = ""
+
+
+@dataclass(frozen=True)
+class MeasuredDensity:
+    """Bulk density measured across received lots of one part.
+
+    The median is the working value; the minimum is what a capsule has to fit
+    in the worst lot on file. Some parts vary threefold between lots, so a
+    formula that fits at the median is not necessarily one that fits.
+    """
+
+    part_code: str
+    material: str
+    median_g_ml: float
+    min_g_ml: float
+    max_g_ml: float
+    lot_count: int
+
+    @property
+    def wide_spread(self) -> bool:
+        return self.lot_count > 2 and self.max_g_ml > self.min_g_ml * 1.5
+
+
+@dataclass(frozen=True)
+class CapsuleFit:
+    """A shell chosen for a fill weight under R&D's tamping model."""
+
+    capsule_size: str
+    volume_ml: float
+    capacity_mg: float
+    fill_mg: float
+    loose_density_g_ml: float
+    base_density_g_ml: float
+    adjusted_density_g_ml: float
+    steps: int
+
+    @property
+    def utilisation(self) -> float:
+        return self.fill_mg / self.capacity_mg if self.capacity_mg else 0.0
+
+    def basis(self) -> str:
+        return (
+            f"{self.fill_mg:,.0f} mg per capsule at a blend density of "
+            f"{self.loose_density_g_ml:.2f} g/mL, read at "
+            f"{self.adjusted_density_g_ml:g} g/mL after {self.steps} tamping "
+            f"density steps from the {self.base_density_g_ml:g} column "
+            f"(R&D Capsule Size Calculator)"
+        )
+
+
+@dataclass(frozen=True)
 class PricingTarget:
     """A channel's target margin. Margin = (price - cost) / price."""
 
@@ -194,10 +291,13 @@ class ReferenceData:
 
     ingredient_identities: list[IdentityEntry] = field(default_factory=list)
     packaging_identities: list[IdentityEntry] = field(default_factory=list)
-    overage: dict[str, dict[str, float]] = field(default_factory=dict)
+    overage: dict[str, OverageClass] = field(default_factory=dict)
     capsule_fill: dict[str, float] = field(default_factory=dict)
     capsule_volume: dict[str, float] = field(default_factory=dict)
+    # Shell capacity in mg by size and blend density, from R&D's calculator.
+    capsule_capacity: dict[str, dict[float, float]] = field(default_factory=dict)
     potency: dict[str, float] = field(default_factory=dict)
+    potency_claims: dict[str, list[PotencyClaim]] = field(default_factory=dict)
     rates: dict[str, str] = field(default_factory=dict)
     guard_pairs: set[frozenset[str]] = field(default_factory=set)
     guard_reasons: dict[frozenset[str], str] = field(default_factory=dict)
@@ -210,6 +310,7 @@ class ReferenceData:
     bottling_rates: list[dict] = field(default_factory=list)
     testing_bands: list[TestingBand] = field(default_factory=list)
     bulk_density: dict[str, float] = field(default_factory=dict)
+    measured_density: dict[str, MeasuredDensity] = field(default_factory=dict)
     pricing: list[PricingTarget] = field(default_factory=list)
     source_dir: Path = REFERENCE_DATA_DIR
     # Populated on first use by the matching engine: canonical identity ->
@@ -404,22 +505,157 @@ class ReferenceData:
         return self.rate("compounding_hours_21_plus", 11.75)
 
     # -- lookups ------------------------------------------------------
-    def overage_pct(self, overage_class: str, multi_ingredient: bool) -> float | None:
+    def overage_class(self, overage_class: str | None) -> OverageClass | None:
+        return self.overage.get((overage_class or "").strip().lower())
+
+    def overage_pct(
+        self, overage_class: str, multi_ingredient: bool, gummy: bool = False
+    ) -> float | None:
+        """Overage for one class, or ``None`` where R&D give no number.
+
+        A gummy formula falls back to the caps-and-tablets column only when
+        R&D leave the gummy one blank, and the caller is told which it got.
+        """
         entry = self.overage.get((overage_class or "").strip().lower())
         if entry is None:
             return None
-        key = "multi" if multi_ingredient else "single"
-        return entry.get(key)
+        return entry.pct(multi_ingredient, gummy)
 
-    def capsule_capacity_mg(self, capsule_size: str | None) -> float | None:
+    def capsule_capacity_mg(
+        self, capsule_size: str | None, density_g_ml: float | None = None
+    ) -> float | None:
+        """Shell capacity in mg, for a blend of the given density if known.
+
+        R&D's calculator tabulates capacity by size against a row of densities.
+        A blend between two columns takes the lower one: overfilling a shell is
+        the failure that reaches a customer.
+        """
         if not capsule_size:
             return None
-        return self.capsule_fill.get(str(capsule_size).strip().lower())
+        size = str(capsule_size).strip().lower()
+        if density_g_ml:
+            grid = self.capsule_capacity.get(size)
+            if grid:
+                lower = [d for d in grid if d <= density_g_ml + 1e-9]
+                if lower:
+                    return grid[max(lower)]
+                return grid[min(grid)]
+        return self.capsule_fill.get(size)
+
+    def capsule_densities(self, capsule_size: str | None) -> list[float]:
+        """The density columns R&D's calculator tabulates for one size."""
+        grid = self.capsule_capacity.get(str(capsule_size or "").strip().lower())
+        return sorted(grid) if grid else []
+
+    def density_columns(self) -> list[float]:
+        """Every density column R&D's capacity chart carries."""
+        columns: set[float] = set()
+        for grid in self.capsule_capacity.values():
+            columns.update(grid)
+        return sorted(columns)
+
+    @property
+    def tamping_steps(self) -> int:
+        """Density columns a tamping encapsulator is assumed to gain.
+
+        R&D's calculator defaults to two: a blend measured at 0.50 g/mL is
+        read at 0.70. It is a quoting heuristic, not a guaranteed fill, and
+        Operations can recalibrate it from machine trials.
+        """
+        return int(self.rate("capsule_tamping_density_steps", 2))
+
+    def tamped_density(
+        self, density_g_ml: float | None, steps: int | None = None
+    ) -> tuple[float, float] | None:
+        """``(base, adjusted)`` density after R&D's tamping offset.
+
+        The measured density is rounded *down* to a chart column first, so a
+        blend between columns is never credited with the higher one.
+        """
+        columns = self.density_columns()
+        if not columns or not density_g_ml or density_g_ml <= 0:
+            return None
+        lower = [value for value in columns if value <= density_g_ml + 1e-9]
+        base = max(lower) if lower else columns[0]
+        steps = self.tamping_steps if steps is None else steps
+        index = min(columns.index(base) + max(0, steps), len(columns) - 1)
+        return base, columns[index]
+
+    def tamped_capacity_mg(
+        self, capsule_size: str | None, density_g_ml: float | None, steps: int | None = None
+    ) -> float | None:
+        """Shell capacity in mg for a blend of this density, after tamping."""
+        adjusted = self.tamped_density(density_g_ml, steps)
+        if adjusted is None:
+            return None
+        return self.capsule_capacity_mg(capsule_size, adjusted[1])
+
+    def recommend_capsule_size(
+        self,
+        fill_mg: float | None,
+        density_g_ml: float | None,
+        steps: int | None = None,
+        sizes: Iterable[str] | None = None,
+    ) -> CapsuleFit | None:
+        """Smallest shell that holds this fill under R&D's tamping model.
+
+        Only sizes with a capacity row are considered, so the system never
+        recommends a shell it has no data for.
+        """
+        adjusted = self.tamped_density(density_g_ml, steps)
+        if adjusted is None or not fill_mg or fill_mg <= 0:
+            return None
+        base, tamped = adjusted
+        allowed = None if sizes is None else {str(s).strip().lower() for s in sizes}
+
+        best: CapsuleFit | None = None
+        for size, grid in self.capsule_capacity.items():
+            if allowed is not None and size not in allowed:
+                continue
+            capacity = grid.get(tamped)
+            volume = self.capsule_volume.get(size)
+            if not capacity or not volume or capacity < fill_mg:
+                continue
+            if best is None or volume < best.volume_ml:
+                best = CapsuleFit(
+                    capsule_size=size,
+                    volume_ml=volume,
+                    capacity_mg=capacity,
+                    fill_mg=fill_mg,
+                    loose_density_g_ml=density_g_ml,
+                    base_density_g_ml=base,
+                    adjusted_density_g_ml=tamped,
+                    steps=self.tamping_steps if steps is None else steps,
+                )
+        return best
+
+    def potency_claims_for_part(self, part_code: str | None) -> list[PotencyClaim]:
+        if not part_code:
+            return []
+        return self.potency_claims.get(part_code.strip().upper(), [])
 
     def potency_for_part(self, part_code: str | None) -> float | None:
+        """The potency of one part, or ``None`` where R&D record more than one.
+
+        A part with several claim bases has no single answer; the caller must
+        ask which moiety is being claimed rather than pick one.
+        """
         if not part_code:
             return None
+        claims = self.potency_claims_for_part(part_code)
+        if len(claims) == 1:
+            return claims[0].potency_factor
+        if claims:
+            return None
         return self.potency.get(part_code.strip().upper())
+
+    def measured_density_for(self, *part_codes: str | None) -> MeasuredDensity | None:
+        for code in part_codes:
+            if code:
+                found = self.measured_density.get(str(code).strip().upper())
+                if found:
+                    return found
+        return None
 
     def po_by_part(self, part_code: str | None) -> PoRow | None:
         if not part_code:
@@ -517,7 +753,20 @@ def load_reference_data(directory: Path | None = None) -> ReferenceData:
         single = _to_float(row.get("single_ingredient_pct"), multi)
         if multi is None:
             continue
-        data.overage[key] = {"multi": multi / 100.0, "single": (single or multi) / 100.0}
+        # A blank gummy column means R&D give no number for that case -- for
+        # probiotics it reads "Strain Dependent" -- and stays unknown.
+        gummy_multi = _to_float(row.get("gummy_multi_pct"))
+        gummy_single = _to_float(row.get("gummy_single_pct"), gummy_multi)
+        data.overage[key] = OverageClass(
+            key=key,
+            label=(row.get("label") or "").strip(),
+            multi=multi / 100.0,
+            single=(single if single is not None else multi) / 100.0,
+            gummy_multi=None if gummy_multi is None else gummy_multi / 100.0,
+            gummy_single=None if gummy_single is None else gummy_single / 100.0,
+            source=(row.get("source") or "").strip(),
+            notes=(row.get("notes") or "").strip(),
+        )
 
     for row in _read_csv(base / "capsule_fill.csv"):
         size = (row.get("capsule_size") or "").strip().lower()
@@ -638,10 +887,56 @@ def load_reference_data(directory: Path | None = None) -> ReferenceData:
             )
 
     for row in _read_csv(base / "potency.csv"):
-        key = (row.get("key") or "").strip().upper()
+        # R&D key their sheet on the part code; the table this replaced used
+        # "key" for the same thing. Both are read so either shape loads.
+        key = (row.get("part_code") or row.get("key") or "").strip().upper()
         factor = _to_float(row.get("potency_factor"))
-        if key and factor:
-            data.potency[key] = factor
+        if not key or not factor:
+            continue
+        data.potency.setdefault(key, factor)
+        description = (row.get("claim_description") or "").strip()
+        data.potency_claims.setdefault(key, []).append(
+            PotencyClaim(
+                part_code=key,
+                claim_description=description,
+                potency_factor=factor,
+                claims_whole_material=(row.get("claims_whole_material") or "").strip() == "1",
+                percent_element=(row.get("percent_element") or "").strip(),
+                element_conversion=(row.get("element_conversion") or "").strip(),
+                min_purity=(row.get("min_purity") or "").strip(),
+                remarks=(row.get("remarks") or "").strip(),
+            )
+        )
+
+    for row in _read_csv(base / "bulk_density_measured.csv"):
+        key = (row.get("part_code") or "").strip().upper()
+        median = _to_float(row.get("median_g_ml"))
+        if not key or not median or median <= 0:
+            continue
+        data.measured_density[key] = MeasuredDensity(
+            part_code=key,
+            material=(row.get("material") or "").strip(),
+            median_g_ml=median,
+            min_g_ml=_to_float(row.get("min_g_ml"), median) or median,
+            max_g_ml=_to_float(row.get("max_g_ml"), median) or median,
+            lot_count=_to_int(row.get("lot_count"), 1) or 1,
+        )
+
+    for row in _read_csv(base / "capsule_capacity.csv"):
+        size = (row.get("capsule_size") or "").strip().lower()
+        if not size:
+            continue
+        grid = {}
+        for column, value in row.items():
+            density = _to_float(column)
+            capacity = _to_float(value)
+            if density and capacity:
+                grid[density] = capacity
+        if grid:
+            data.capsule_capacity[size] = grid
+        volume = _to_float(row.get("volume_ml"))
+        if volume:
+            data.capsule_volume.setdefault(size, volume)
 
     for row in _read_csv(base / "labor_rates.csv"):
         key = (row.get("key") or "").strip().lower()

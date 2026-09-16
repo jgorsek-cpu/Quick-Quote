@@ -1,29 +1,36 @@
-overage_class,multi_ingredient_pct,single_ingredient_pct,notes
-vitamin_a,30.0,25.0,Light and oxygen sensitive; high overage standard
-beta_carotene,30.0,25.0,Oxidation sensitive
-vitamin_c,10.0,8.0,Ascorbic acid and mineral ascorbates
-vitamin_d,25.0,20.0,Potency drift over shelf life
-vitamin_e,10.0,8.0,Tocopherol blends
-vitamin_k,20.0,15.0,K1 and K2 (MK-7)
-thiamine,15.0,12.0,B1
-riboflavin,12.0,10.0,B2
-niacin,10.0,8.0,B3
-pantothenic_acid,15.0,12.0,B5
-vitamin_b6,15.0,12.0,Pyridoxine
-biotin,20.0,15.0,B7 - assay variability
-folate,25.0,20.0,Folic acid and 5-MTHF
-vitamin_b12,30.0,25.0,Cyanocobalamin and methylcobalamin
-calcium_magnesium,3.0,2.0,Macro minerals - stable
-trace_minerals,8.0,5.0,Zinc copper manganese selenium chromium
-iron,5.0,3.0,Stable salts and chelates
-amino_acids,2.0,2.0,Free form amino acids
-botanical_powder,3.0,2.0,Whole herb powders
-botanical_extract,5.0,3.0,Standardized extracts
-coq10,10.0,8.0,Ubiquinone and ubiquinol
-lutein,20.0,15.0,Carotenoid - oxidation sensitive
-probiotic,50.0,40.0,CFU decay over shelf life
-enzyme,15.0,10.0,Activity decay
-omega_oil,10.0,8.0,Oxidation sensitive oils
-mineral_salt,3.0,2.0,Carriers and stable salts
-excipient,2.0,2.0,Flow agents lubricants fillers
-default,5.0,5.0,Applied when class cannot be determined - raises R&D flag
+overage_class,label,multi_ingredient_pct,single_ingredient_pct,gummy_multi_pct,gummy_single_pct,source,notes
+vitamin_a,Vitamin A,35,10,35,10,R&D Overage Guidelines,
+beta_carotene,Beta Carotene (Carotenoids),15,10,50,20,R&D Overage Guidelines,
+thiamine,Vitamin B1 (Thiamine),30,10,40,20,R&D Overage Guidelines,
+riboflavin,Vitamin B2 (Riboflavin),15,10,20,10,R&D Overage Guidelines,
+niacin,Vitamin B3 (Niacin),20,10,20,10,R&D Overage Guidelines,
+pantothenic_acid,Vitamin B5 (Pantothenic Acid),20,10,20,10,R&D Overage Guidelines,
+vitamin_b6,Vitamin B6 (Pyridoxine),30,20,30,20,R&D Overage Guidelines,
+biotin,Biotin,30,10,30,10,R&D Overage Guidelines,
+folate,Folate,40,20,40,20,R&D Overage Guidelines,
+vitamin_c,Vitamin C,20,10,40,30,R&D Overage Guidelines,
+vitamin_d,Vitamin D,35,20,40,20,R&D Overage Guidelines,
+vitamin_e,Vitamin E,10,5,20,10,R&D Overage Guidelines,
+vitamin_k,Vitamin K,50,30,50,30,R&D Overage Guidelines,
+calcium_magnesium,"Calcium, Magnesium, Zinc, Iron, Boron",2,2,10,5,R&D Overage Guidelines,
+iodine,Iodine,2,2,20,10,R&D Overage Guidelines,
+trace_minerals,"Chromium, Copper, Manganese, Molybdenum, Selenium,",5,2,10,5,R&D Overage Guidelines,
+amino_acids,"Alanine, Arginine, Asparagine, Aspartic Acid, Cysteine, Glutamic Acid, Glutamine, Glycine, Histidine, Isoleucine, Leucine, Lysine, Methionine, Phenylalanine, Proline, Serine, Threonine, Tryptophan, Tyrosine, Valine",3,3,10,10,R&D Overage Guidelines,
+botanical_powder,Botanical Powders,1,1,5,5,R&D Overage Guidelines,
+botanical_extract,Botanical Extracts (Standardized),5,5,10,10,R&D Overage Guidelines,
+alpha_lipoic_acid,Alpha Lipoic Acid,10,10,15,10,R&D Overage Guidelines,
+coq10,CoQ10 (Ubiquinone),10,5,25,10,R&D Overage Guidelines,
+ubiquinol,CoQ10 (Ubiquinol),10,5,40,20,R&D Overage Guidelines,*Kaneka Ubiquinol not recommended in a gummy format
+lutein,Lutein,20,10,30,10,R&D Overage Guidelines,
+lycopene,Lycopene,10,5,40,20,R&D Overage Guidelines,
+melatonin,Melatonin,10,5,30,15,R&D Overage Guidelines,
+probiotic_spore,Spore Forming,20,10,,,R&D Overage Guidelines,
+probiotic_non_spore,Non-Spore Forming,70,50,,,R&D Overage Guidelines,
+enzyme,Enzymes,20,10,50,30,R&D Overage Guidelines,
+iron,"Calcium, Magnesium, Zinc, Iron, Boron",2,2,10,5,R&D Overage Guidelines,"Priced from R&D's 'Calcium, Magnesium, Zinc, Iron, Boron' row."
+mineral_salt,"Calcium, Magnesium, Zinc, Iron, Boron",2,2,10,5,R&D Overage Guidelines,"Priced from R&D's 'Calcium, Magnesium, Zinc, Iron, Boron' row."
+probiotic,Non-Spore Forming,70,50,,,R&D Overage Guidelines,"Priced from R&D's 'Non-Spore Forming' row - the higher of its two probiotic rows, applied when the strain type is not stated."
+vitamin_b12,Vitamin B12,30,25,,,NOT IN R&D GUIDELINE - placeholder,Confirm with R&D; quotes using this class say where it came from.
+omega_oil,Omega oils,10,8,,,NOT IN R&D GUIDELINE - placeholder,Confirm with R&D; quotes using this class say where it came from.
+excipient,"Excipients, flow agents, fillers",2,2,,,NOT IN R&D GUIDELINE - placeholder,Confirm with R&D; quotes using this class say where it came from.
+default,Applied when a class cannot be determined,5,5,,,NOT IN R&D GUIDELINE - placeholder,Confirm with R&D; quotes using this class say where it came from.
