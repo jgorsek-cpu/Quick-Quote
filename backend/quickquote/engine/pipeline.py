@@ -221,6 +221,8 @@ def run_pipeline(
         flags=flags,
         derivation_notes=derivation_notes,
         reference_as_of=as_of,
+        dataset_label=reference.dataset_label,
+        dataset_is_demonstration=reference.is_demonstration,
     )
     result.pricing = build_pricing(summary, reference)
     if with_price_breaks:

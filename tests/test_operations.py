@@ -5,6 +5,7 @@ several of them changed answers the engine was already giving. The behaviour
 each one drives is asserted here.
 """
 import copy
+from pathlib import Path
 
 import pytest
 
@@ -264,3 +265,82 @@ class TestUnknownDensityIsVisible:
             quote(lines=[FormulaLine("Wholly Unknown Material", 100.0)]),
             reference, as_of=AS_OF)
         assert any("Bulk density not on file" in flag.reason for flag in result.flags)
+
+
+class TestDatasetProvenance:
+    """A quote costed against demonstration tables is complete, confident and
+    fiction. Its part codes look exactly like real ones, so it has to say so."""
+
+    def test_the_shipped_tables_declare_themselves_a_demonstration(self, reference):
+        assert reference.is_demonstration
+
+    def test_every_quote_on_them_carries_a_blocking_flag(self, reference):
+        result = run_pipeline(quote(), reference, as_of=AS_OF)
+        notice = [flag for flag in result.flags if flag.item == "Reference data"]
+        assert notice and notice[0].severity == "blocking"
+        assert "NOT FOR QUOTING" in notice[0].reason
+        assert result.dataset_is_demonstration
+
+    def test_operational_tables_raise_no_such_flag(self, reference):
+        catalogue = copy.deepcopy(reference)
+        catalogue.rates = {**catalogue.rates, "dataset_is_demonstration": "0",
+                           "dataset_label": "DrVita operational data loaded 2026-09-24"}
+        result = run_pipeline(quote(), catalogue, as_of=AS_OF)
+        assert not result.dataset_is_demonstration
+        assert not [flag for flag in result.flags if flag.item == "Reference data"]
+        assert result.dataset_label.startswith("DrVita operational")
+
+    def test_the_loader_script_clears_the_marker(self):
+        """Otherwise seeding the real directory would stamp it a demonstration."""
+        script = (Path(__file__).resolve().parents[1]
+                  / "scripts" / "load_real_data.sh").read_text()
+        assert "dataset_is_demonstration" in script
+        assert script.index("cp backend/quickquote/reference/data/*.csv") < \
+               script.index("dataset_is_demonstration")
+
+
+class TestUnconfirmedMargins:
+    def test_a_placeholder_margin_is_flagged_to_finance(self, reference):
+        result = run_pipeline(quote(), reference, as_of=AS_OF)
+        margin = [flag for flag in result.flags if flag.item == "Margin targets"]
+        assert margin and margin[0].owner == "Finance"
+        assert margin[0].severity == "blocking"
+
+    def test_a_confirmed_margin_raises_nothing(self, reference):
+        catalogue = copy.deepcopy(reference)
+        catalogue.pricing = [
+            type(target)(**{**target.__dict__, "notes": "Confirmed by Finance 2026-09"})
+            for target in catalogue.pricing
+        ]
+        result = run_pipeline(quote(), catalogue, as_of=AS_OF)
+        assert not [flag for flag in result.flags if flag.item == "Margin targets"]
+
+    def test_the_price_is_still_offered_with_the_caveat(self, reference):
+        """Flagging it is not the same as withholding it."""
+        result = run_pipeline(quote(), reference, as_of=AS_OF)
+        assert result.pricing and all(item.price_per_bottle > 0 for item in result.pricing)
+
+
+class TestDescriptionEncoding:
+    """Global Shop exports cp1252 text that arrives decoded as cp437."""
+
+    @pytest.mark.parametrize("broken,fixed", [
+        ("KSM-66« ASHWAGANDHA EXTRACT", "KSM-66® ASHWAGANDHA EXTRACT"),
+        ("3.25 x 3.5 WOMENÆS WHITE FILM", "3.25 x 3.5 WOMEN’S WHITE FILM"),
+        ("5-HTP, 98% (HTPurityÖ)", "5-HTP, 98% (HTPurity™)"),
+        ("32oz WHITE HDPE ôLIPö", "32oz WHITE HDPE “LIP”"),
+    ])
+    def test_it_is_repaired(self, broken, fixed):
+        from quickquote.reference.ingest import repair_mojibake
+
+        assert repair_mojibake(broken) == fixed
+
+    @pytest.mark.parametrize("text", [
+        "Plain ASCII Description", "Café Latte Flavour", "Açaí Berry Extract",
+        "PURÉE BASE", "Jalapeño Powder",
+    ])
+    def test_a_real_accent_is_left_alone(self, text):
+        """The repair must not mangle a description that was always correct."""
+        from quickquote.reference.ingest import repair_mojibake
+
+        assert repair_mojibake(text) == text

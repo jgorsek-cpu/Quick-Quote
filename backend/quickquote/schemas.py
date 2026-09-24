@@ -337,6 +337,9 @@ class QuoteResult:
     pricing: list[PriceRecommendation] = field(default_factory=list)
     derivation_notes: list[str] = field(default_factory=list)
     reference_as_of: date | None = None
+    # Which reference tables costed this quote, and whether they are real.
+    dataset_label: str = ""
+    dataset_is_demonstration: bool = False
 
     @property
     def product(self) -> ProductSpec:
@@ -355,6 +358,10 @@ class QuoteResult:
             "quote_id": self.quote_id,
             "created_at": self.created_at.isoformat(),
             "reference_as_of": self.reference_as_of.isoformat() if self.reference_as_of else None,
+            # A stored quote keeps its own provenance: one costed in a
+            # demonstration session must not read as real when reopened.
+            "dataset_label": self.dataset_label,
+            "dataset_is_demonstration": self.dataset_is_demonstration,
             "parsed": self.parsed.to_dict(),
             "product": self.product.to_dict(),
             "ingredients": [line.to_dict() for line in self.ingredients],

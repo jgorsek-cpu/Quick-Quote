@@ -39,6 +39,31 @@ echo "==> Seeding $TARGET from the shipped reference tables"
 mkdir -p "$TARGET"
 cp backend/quickquote/reference/data/*.csv "$TARGET/"
 
+# The shipped tables declare themselves demonstration data, and every quote
+# costed against them is stamped not-for-quoting. This set is about to be
+# rebuilt from DrVita's own exports, so it stops being a demonstration.
+PYTHONPATH=backend "$PY" - "$TARGET" <<'MARK'
+import csv, sys
+from datetime import date
+from pathlib import Path
+
+path = Path(sys.argv[1]) / "labor_rates.csv"
+rows = list(csv.DictReader(path.open()))
+fields = list(rows[0])
+label = f"DrVita operational data loaded {date.today():%Y-%m-%d}"
+values = {"dataset_is_demonstration": "0", "dataset_label": label}
+for row in rows:
+    if row["key"] in values:
+        row["value"] = values.pop(row["key"])
+for key, value in values.items():
+    rows.append({**{name: "" for name in fields}, "key": key, "value": value})
+with path.open("w", newline="") as handle:
+    writer = csv.DictWriter(handle, fieldnames=fields)
+    writer.writeheader()
+    writer.writerows(rows)
+print(f"    marked as operational data: {label}")
+MARK
+
 PO_ARGS=()
 for file in "$@"; do PO_ARGS+=(--po "$file"); done
 

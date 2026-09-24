@@ -44,6 +44,22 @@ header.app .brand { font-size: 19px; font-weight: 700; letter-spacing: -.02em; }
 header.app .tagline { color: #b9c6e0; font-size: 12.5px; flex: 1; min-width: 220px; }
 header.app .refstat { color: #b9c6e0; font-size: 12px; font-variant-numeric: tabular-nums; }
 
+.databanner {
+  background: #8a1414;
+  color: #fff;
+  font-weight: 600;
+  font-size: 13px;
+  line-height: 1.45;
+  padding: 10px 24px;
+  border-bottom: 3px solid #5c0d0d;
+}
+.databanner.ok {
+  background: #143d2b;
+  border-bottom-color: #0d2a1d;
+  font-weight: 500;
+  color: #cfe6da;
+}
+
 nav.tabs {
   background: var(--navy-700);
   padding: 0 24px;

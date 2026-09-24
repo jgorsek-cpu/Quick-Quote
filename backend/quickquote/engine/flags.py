@@ -154,6 +154,24 @@ def build_flags(
     """Generate the full owner-keyed flag set for one quote."""
     flags: list[Flag] = []
 
+    # -- provenance: the first thing anyone reading this needs to know --
+    # A quote costed against the demonstration tables is complete, confident
+    # and fiction. Its part codes look exactly like real ones, so nothing
+    # about the numbers gives it away.
+    if reference.is_demonstration:
+        flags.append(
+            Flag(
+                FINANCE,
+                "Reference data",
+                "NOT FOR QUOTING - this quote was costed against demonstration "
+                "data, not DrVita's purchase history. Every price in it is "
+                "illustrative. Load the operational tables with "
+                "scripts/load_real_data.sh and set QUICKQUOTE_REFERENCE_DIR "
+                "before quoting anyone.",
+                "blocking",
+            )
+        )
+
     # -- Purchasing ---------------------------------------------------
     for line in ingredients:
         label = line.name
@@ -496,6 +514,25 @@ def build_flags(
             severity = "blocking" if step.step in manufacturing.uncosted_critical_steps else "review"
             flags.append(Flag(OPERATIONS, f"{manufacturing.dosage_form} - {step.step}",
                               step.reason, severity))
+
+    # The recommended price is the number most likely to be acted on, and it
+    # is only as good as the margin behind it. An unconfirmed target must not
+    # produce a confident-looking price with nothing said about it.
+    placeholder = [target for target in reference.pricing
+                   if "PLACEHOLDER" in (target.notes or "").upper()]
+    if placeholder:
+        names = ", ".join(target.label for target in placeholder)
+        flags.append(
+            Flag(
+                FINANCE,
+                "Margin targets",
+                f"Recommended prices for {names} use placeholder margins that "
+                "Finance has not confirmed. The cost below is the system's work; "
+                "the price is not. Set the targets in pricing.csv before anyone "
+                "quotes from them.",
+                "blocking",
+            )
+        )
 
     if manufacturing.estimated and manufacturing.uncosted_steps:
         flags.append(

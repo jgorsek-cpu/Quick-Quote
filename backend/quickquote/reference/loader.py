@@ -637,6 +637,22 @@ class ReferenceData:
             minutes += (blend_kg / 20.0) * per_20kg / 60.0
         return minutes / 60.0
 
+    # -- provenance ---------------------------------------------------
+    @property
+    def dataset_label(self) -> str:
+        return self.text_rate("dataset_label", "Demonstration data")
+
+    @property
+    def is_demonstration(self) -> bool:
+        """True when these tables carry illustrative prices, not DrVita's.
+
+        The shipped tables are a working demonstration set, and their part
+        codes look exactly like real ones. A quote costed against them is
+        complete, confident and fiction, so it has to say so loudly rather
+        than leave someone to notice.
+        """
+        return self.rate("dataset_is_demonstration", 0) == 1
+
     # -- batches ------------------------------------------------------
     @property
     def default_blend_density(self) -> float:

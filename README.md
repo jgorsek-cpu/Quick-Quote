@@ -210,7 +210,7 @@ Tests:
 .venv/Scripts/python -m pytest          # Windows
 ```
 
-287 tests.
+304 tests.
 
 ---
 
@@ -500,7 +500,7 @@ backend/quickquote/
   schemas.py   the one shape every producer feeds and every consumer reads
   store.py     quote registry and artifacts
 frontend/      index.html · static/app.js · static/styles.css
-tests/         287 tests
+tests/         304 tests
 samples/       demo quote sheets and generated artifacts
 ```
 
@@ -517,6 +517,16 @@ samples/       demo quote sheets and generated artifacts
   rather than a number, and vitamin B12, omega oils and excipients have no
   row at all. Each is carried as a stated working value that flags itself,
   never as R&D's answer.
+- **The reference data is not curated yet.** 676 ingredient and 214 packaging
+  identities are marked PROPOSED, awaiting R&D and Purchasing. Picking an
+  ingredient from the curated list quotes cleanly; typing a formula in plain
+  English mostly comes back Unmatched or Needs Review until that review
+  happens.
+- **The shipped tables are demonstration data**, and they say so: every quote
+  costed against them carries a blocking Finance flag, the workbook and PDF
+  read NOT A QUOTE instead of INTERNAL DRAFT, and the web app shows a red
+  banner. `scripts/load_real_data.sh` clears the marker when it rebuilds the
+  tables from DrVita's exports.
 - **Two rates Operations did not supply.** The Schaefer's speed, set up and
   cleaning are still placeholders, so runs under 100,000 capsules carry a
   guessed encapsulation time; and the Chilsinator's granulation rate is not on

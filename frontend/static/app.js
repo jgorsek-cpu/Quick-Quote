@@ -1076,6 +1076,21 @@ async function boot() {
     $("#ref-status").textContent =
       `${num(health.reference_rows)} PO records · ${num(health.identities)} identities`;
 
+    // A quote costed against the demonstration tables is complete, confident
+    // and fiction. Nothing about the numbers gives it away, so the app has to.
+    const banner = $("#data-banner");
+    if (overview.dataset_is_demonstration) {
+      banner.textContent =
+        "DEMONSTRATION DATA — prices here are illustrative, not DrVita's. " +
+        "Nothing costed in this session is a quote. " +
+        "Run scripts/load_real_data.sh and start with QUICKQUOTE_REFERENCE_DIR=var/reference.";
+      banner.hidden = false;
+    } else {
+      banner.textContent = overview.dataset_label || "";
+      banner.hidden = !overview.dataset_label;
+      banner.classList.add("ok");
+    }
+
     const sizes = Object.keys(overview.capsule_fill_mg);
     const select = $("#p-capsule_size");
     for (const size of sizes) select.append(el("option", {value: size}, `Size ${size}`));

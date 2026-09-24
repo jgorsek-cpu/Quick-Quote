@@ -511,7 +511,12 @@ def _customer_summary(book: Workbook, result: QuoteResult) -> None:
     _widths(sheet, [34, 30, 18, 16])
     _title(sheet, "CUSTOMER QUOTE SUMMARY", 4)
 
-    draft = sheet.cell(row=2, column=1, value="INTERNAL DRAFT - not for release until Sales and Finance review")
+    notice = "INTERNAL DRAFT - not for release until Sales and Finance review"
+    if result.dataset_is_demonstration:
+        # A demonstration quote must not be mistaken for a draft of a real one.
+        notice = ("NOT A QUOTE - costed against DEMONSTRATION DATA. "
+                  "Every price below is illustrative, not DrVita's.")
+    draft = sheet.cell(row=2, column=1, value=notice)
     draft.font = Font(bold=True, color="FFFFFF")
     draft.fill = PatternFill("solid", fgColor=RED)
     sheet.merge_cells(start_row=2, start_column=1, end_row=2, end_column=4)

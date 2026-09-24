@@ -124,6 +124,8 @@ def reference_overview(reference: ReferenceData) -> dict:
     """Headline numbers and the rates every quote is costed against."""
     return {
         "source_dir": str(reference.source_dir),
+        "dataset_label": reference.dataset_label,
+        "dataset_is_demonstration": reference.is_demonstration,
         "counts": {
             "ingredient_identities": len(reference.ingredient_identities),
             "packaging_identities": len(reference.packaging_identities),

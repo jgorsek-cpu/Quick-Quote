@@ -52,6 +52,7 @@ class IngestReport:
     master_rows: int = 0
     parts_out: int = 0
     parts_without_description: list[str] = field(default_factory=list)
+    descriptions_repaired: int = 0
     warnings: list[str] = field(default_factory=list)
 
     def render(self) -> str:
@@ -60,6 +61,8 @@ class IngestReport:
             f"  PO exports:            {', '.join(self.po_files) or 'none'}",
             f"  Item master:           {', '.join(self.master_files) or 'none'}",
             f"  Item master rows:      {self.master_rows:,}",
+            f"  Descriptions repaired: {self.descriptions_repaired:,} "
+            f"(cp1252 text decoded as cp437 on export)",
             f"  PO transactions read:  {self.transactions_read:,}",
             f"  Subtotal rows skipped: {self.subtotal_rows_skipped:,}",
             f"  Unusable rows skipped: {self.unparsable_rows_skipped:,}",
@@ -74,6 +77,36 @@ class IngestReport:
         for warning in self.warnings:
             lines.append(f"  ! {warning}")
         return "\n".join(lines)
+
+
+# Descriptions leave Global Shop as cp1252 bytes and arrive decoded as cp437,
+# so a registered-trademark sign reads as a guillemet and an apostrophe as an
+# AE ligature: "KSM-66« ASHWAGANDHA", "WOMENÆS WHITE FILM".
+#
+# Only the characters cp437 produces from cp1252 *punctuation* are treated as
+# suspect -- quotes, dashes, and the trademark, registered and degree signs.
+# A letter with a real accent is never one of them, so "Açaí" and "Café"
+# survive untouched even though a naive round trip would mangle them.
+_MOJIBAKE = "".join(
+    bytes([code]).decode("cp437")
+    for code in (0x91, 0x92, 0x93, 0x94, 0x96, 0x97, 0x99, 0xA9, 0xAE, 0xB0)
+)
+
+
+def repair_mojibake(text: str) -> str:
+    """Undo a cp1252 description decoded as cp437, where that is what it is.
+
+    The repair is attempted only on strings whose every non-ASCII character is
+    one of the known mojibake characters, so a description that genuinely
+    carries an accent is left exactly as it was found.
+    """
+    suspect = [ch for ch in text if ord(ch) > 127]
+    if not suspect or any(ch not in _MOJIBAKE for ch in suspect):
+        return text
+    try:
+        return text.encode("cp437").decode("cp1252")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return text
 
 
 def _norm(text: object) -> str:
@@ -199,7 +232,10 @@ def load_item_master(
             if part_col >= len(row):
                 continue
             part = str(row[part_col] or "").strip().upper()
-            description = str(row[desc_col] or "").strip()
+            raw_description = str(row[desc_col] or "").strip()
+            description = repair_mojibake(raw_description)
+            if description != raw_description:
+                report.descriptions_repaired += 1
             if not part or not description:
                 continue
             uom = ""

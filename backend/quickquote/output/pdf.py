@@ -120,6 +120,9 @@ def build_quote_pdf(result: QuoteResult) -> bytes:
         style["sub"],
     ))
     story.append(_banner(
+        "<b>NOT A QUOTE</b> &mdash; costed against <b>demonstration data</b>. "
+        "Every price below is illustrative, not DrVita's."
+        if result.dataset_is_demonstration else
         "<b>INTERNAL DRAFT</b> &mdash; not for release until Sales and Finance review.",
         RED, style["banner"],
     ))
