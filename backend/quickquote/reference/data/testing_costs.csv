@@ -1,4 +1,4 @@
 min_ingredients,max_ingredients,batch_cost,per_unit_cost,notes
-1,3,700,0.35,From the price sheet testing table
-4,5,900,0.45,From the price sheet testing table
-6,,1100,0.55,6 or more ingredients
+1,3,700,0,Per batch. Curion Turmeric 60ct (Sep 2026) charges $700 for the batch and nothing per bottle
+4,5,900,0,Per batch. Powder SKUs on the same workbook charge $900 for the batch
+6,,1100,0,Per batch. FINANCE TO CONFIRM - the Mar 2026 D3/K2 sheet charges $0.45 a bottle and no batch cost instead

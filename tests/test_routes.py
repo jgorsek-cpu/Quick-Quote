@@ -181,13 +181,20 @@ class TestBottlingSpeed:
 
 
 class TestTestingCost:
-    @pytest.mark.parametrize("count,batch,per_unit", [
-        (2, 700, 0.35), (4, 900, 0.45), (9, 1100, 0.55), (30, 1100, 0.55),
+    @pytest.mark.parametrize("count,batch", [
+        (2, 700), (4, 900), (9, 1100), (30, 1100),
     ])
-    def test_bands_follow_the_price_sheet(self, reference, count, batch, per_unit):
+    def test_bands_follow_the_price_sheet(self, reference, count, batch):
         cost, basis = compute_testing_cost(reference, count, 1000)
-        assert cost == pytest.approx(per_unit + batch / 1000)
+        assert cost == pytest.approx(batch / 1000)
         assert f"${batch:,.0f}" in basis
+
+    def test_testing_is_one_charge_per_batch_not_two(self, reference):
+        """DrVita's sheets charge either a batch total or a per-bottle figure,
+        never both. Carrying both double-counted every quote."""
+        assert all(band.per_unit_cost == 0 for band in reference.testing_bands)
+        cheap = compute_testing_cost(reference, 6, 250_000)[0]
+        assert cheap < 0.01, "a per-batch cost must amortise away at volume"
 
     def test_it_reaches_the_quote_total(self, reference):
         result = run_pipeline(quote("Capsule"), reference, as_of=AS_OF)

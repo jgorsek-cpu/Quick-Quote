@@ -226,7 +226,7 @@ Tests:
 .venv/Scripts/python -m pytest          # Windows
 ```
 
-352 tests.
+353 tests.
 
 ---
 
@@ -516,7 +516,7 @@ backend/quickquote/
   schemas.py   the one shape every producer feeds and every consumer reads
   store.py     quote registry and artifacts
 frontend/      index.html · static/app.js · static/styles.css
-tests/         352 tests
+tests/         353 tests
 samples/       demo quote sheets and generated artifacts
 ```
 
@@ -548,9 +548,11 @@ samples/       demo quote sheets and generated artifacts
   says 15,000. On a 60,000-capsule run that is 3.5 hours, or $0.36 a bottle.
   The engine uses Operations' figure.
 - **Testing counts every formula line.** DrVita's sheets appear to count only
-  the actives — a six-line formula with three excipients was quoted on the 1-3
-  ingredient band — and they charge the band's batch cost with no per-unit
-  component. Both differences need Finance to settle.
+  the actives: a six-line formula with three excipients was quoted on the 1-3
+  ingredient band. Finance to settle. The bands themselves are per batch and
+  carry no per-unit charge — the two price sheets use one convention or the
+  other, never both, and the Mar 2026 sheet's $0.45 a bottle is an alternative
+  to a batch cost rather than an addition to it.
 - **One rate Operations have not supplied.** The Chilsinator's granulation
   rate, which is the only thing still stopping a tablet being quoted. Every
   encapsulator, packaging line, powder and packet rate is confirmed.
