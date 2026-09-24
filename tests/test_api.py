@@ -96,10 +96,13 @@ class TestLivePreviewParity:
         assert parts["primary_per_bottle"] == pytest.approx(
             parts["raw_materials"] + parts["packaging"]
             + parts["manufacturing"] + parts["testing"])
+        # Every costed step, not just the three named ones: cleaning is a real
+        # step with a real cost, and summing only the headline figures would
+        # stop noticing a step being dropped the moment a fourth one is costed.
         assert parts["manufacturing"] == pytest.approx(
-            (manufacturing["compounding_per_bottle"] or 0)
-            + (manufacturing["encapsulation_per_bottle"] or 0)
-            + (manufacturing["bottling_per_bottle"] or 0))
+            sum(step["cost_per_bottle"] or 0 for step in manufacturing["steps"]))
+        assert {"Compounding", "Encapsulation", "Bottling"} <= {
+            step["step"] for step in manufacturing["steps"]}
 
     def test_the_quoted_total_sits_inside_its_own_range(self, client):
         parts = client.post("/api/quotes/preview", json=QUOTE).json()["summary"]

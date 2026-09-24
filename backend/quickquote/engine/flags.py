@@ -94,6 +94,37 @@ def _po_flags(
     return flags
 
 
+def _packaging_line_alternatives(
+    product: ProductSpec, manufacturing: ManufacturingEstimate, reference: ReferenceData
+) -> list[str]:
+    """What each other packaging line would cost per bottle at this count."""
+    bottles = manufacturing.bottles_in_run
+    step = next((item for item in manufacturing.steps
+                 if item.step.lower() == "bottling"), None)
+    if not bottles or step is None or step.cost_per_bottle is None:
+        return []
+
+    notes: list[str] = []
+    for name in reference.packaging_line_names():
+        if name == manufacturing.packaging_line:
+            continue
+        row = reference.packaging_line_row(product.count_per_bottle, name)
+        rate = reference.centre_rate(step.work_centre, row.crew_size) if row else None
+        if row is None or rate is None:
+            continue
+        hours = bottles / row.bottles_per_hour
+        if row.setup_hours:
+            hours += row.setup_hours * manufacturing.batches
+        cost = hours * rate / bottles
+        difference = cost - step.cost_per_bottle
+        notes.append(
+            f"{name} would bottle at {row.bottles_per_hour:,.0f}/hr with "
+            f"{row.crew_size} operators, ${cost:.4f} per bottle "
+            f"({difference:+.4f})"
+        )
+    return notes
+
+
 def _smaller_shell(
     reference: ReferenceData, needed_ml: float, current_size: str | None
 ) -> str | None:
@@ -396,6 +427,67 @@ def build_flags(
         )
     if not manufacturing.estimated:
         flags.append(Flag(OPERATIONS, "Manufacturing", manufacturing.reason, "blocking"))
+
+    # -- Operations: which packaging line, and how many batches ---------
+    # Operations gave rates for PKG1 and PKG2&3 but not which line a product
+    # runs on, and the two differ by more than a third per bottle. The quote
+    # says which was assumed and what the other would cost.
+    if manufacturing.packaging_line and manufacturing.packaging_line_assumed:
+        alternatives = _packaging_line_alternatives(product, manufacturing, reference)
+        message = (
+            f"Packaging line not specified - assumed {manufacturing.packaging_line}."
+        )
+        if alternatives:
+            message += " " + "; ".join(alternatives) + "."
+        flags.append(Flag(OPERATIONS, "Packaging line", message))
+
+    # Operations timed weighing, blending and dispensing in September 2026,
+    # and the total comes out well under the component-count bands the engine
+    # charges. Both are Operations' own numbers, so the quote names the gap
+    # rather than choosing between them.
+    compounding = next((step for step in manufacturing.steps
+                        if step.basis == "batch_hours_by_components"), None)
+    if compounding is not None and compounding.run_hours:
+        timed = reference.compounding_hours_from_operations(
+            manufacturing.component_count, manufacturing.blend_kg
+        )
+        charged = compounding.run_hours / max(1, manufacturing.batches)
+        threshold = reference.rate("compounding_variance_flag_pct", 25.0) / 100.0
+        if timed and charged and abs(timed - charged) > charged * threshold:
+            flags.append(
+                Flag(
+                    OPERATIONS,
+                    "Compounding time",
+                    f"Compounding is charged at {charged:.2f} h per batch from the "
+                    f"component-count bands, but Operations' own timings "
+                    f"(weighing, blending, dispensing) come to {timed:.2f} h "
+                    f"({(timed / charged - 1) * 100:+.0f}%). Confirm which covers "
+                    "the whole operation.",
+                )
+            )
+
+    if manufacturing.batches > 1:
+        flags.append(
+            Flag(
+                OPERATIONS,
+                "Batches",
+                f"This run needs {manufacturing.batches} batches on the "
+                f"{manufacturing.blender} blender ({manufacturing.blend_kg:,.0f} kg of "
+                f"blend). Compounding, set up and cleaning are paid once per batch, "
+                "so they do not amortise the way a single-batch quote assumes.",
+            )
+        )
+    if manufacturing.blend_density_assumed and manufacturing.blend_kg:
+        flags.append(
+            Flag(
+                RND,
+                "Blend density",
+                f"Batch size was worked out at Operations' quoting assumption of "
+                f"{manufacturing.blend_density_g_ml:g} g/mL because at least one "
+                "material has no measured density on file. A denser blend fits in "
+                "fewer batches.",
+            )
+        )
 
     # A step with no rate on file is named individually, so Operations knows
     # exactly which number to supply rather than being told the total is wrong.

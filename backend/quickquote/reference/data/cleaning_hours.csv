@@ -1,6 +1,6 @@
 work_centre,hours_per_batch,confirmed,notes
-Cleaning- blending,,0,Not on file - Operations to supply
-Cleaning- Encap,,0,Not on file - Operations to supply
-Cleaning - PakRapid,,0,Not on file - Operations to supply
-Cleaning-IPF,,0,Not on file - Operations to supply
-Cleaning- Packaging,,0,Not on file - Operations to supply
+Cleaning- blending,0.5,1,Operations 2026-09 - 30 minutes
+Cleaning- Encap,,0,Machine specific - read from machines.csv for the machine the run selects
+Cleaning - PakRapid,1,1,Operations 2026-09
+Cleaning-IPF,1,1,Operations 2026-09 - powder line
+Cleaning- Packaging,1,1,Operations 2026-09

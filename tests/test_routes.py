@@ -78,15 +78,23 @@ class TestCapsuleRoute:
 
 class TestUncostableSteps:
     @pytest.mark.parametrize("form,missing", [
-        ("Tablet", "Tablet press"),
-        ("Powder", "Powder fill"),
+        # Operations supplied the Fette press rate, so what still stops a
+        # tablet is granulation; softgel encapsulation has no machine at all.
+        ("Tablet", "Granulation"),
         ("Softgel", "Encapsulation"),
     ])
     def test_a_line_with_no_run_rate_is_not_estimated(self, reference, form, missing):
-        """A tablet must not come back priced as though pressing were free."""
+        """A tablet must not come back priced as though granulating were free."""
         estimate, _ = estimate_manufacturing(spec(form), 7, reference)
         assert not estimate.estimated
         assert missing in estimate.uncosted_critical_steps
+
+    @pytest.mark.parametrize("form", ["Powder", "Packet"])
+    def test_a_line_operations_have_rated_is_quotable(self, reference, form):
+        estimate, _ = estimate_manufacturing(spec(form), 7, reference)
+        assert estimate.estimated
+        assert not estimate.uncosted_critical_steps
+        assert estimate.total_per_bottle > 0
 
     def test_gummies_have_no_work_centre_at_all(self, reference):
         estimate, _ = estimate_manufacturing(spec("Gummy"), 7, reference)
@@ -99,9 +107,24 @@ class TestUncostableSteps:
         result = run_pipeline(quote("Gummy"), reference, as_of=AS_OF)
         assert result.summary.manufacturing == 0.0
 
-    def test_cleaning_is_ancillary_and_only_understates(self, reference):
-        """Missing cleaning hours must not invalidate an otherwise sound estimate."""
+    def test_cleaning_is_costed_now_that_operations_have_supplied_it(self, reference):
         estimate, _ = estimate_manufacturing(spec("Capsule"), 7, reference)
+        assert estimate.estimated
+        cleaning = [step for step in estimate.steps if "cleaning" in step.step.lower()]
+        assert cleaning and all(step.cost_per_bottle is not None for step in cleaning)
+        assert not estimate.uncosted_steps
+
+    def test_cleaning_stays_ancillary_when_a_figure_goes_missing(self, reference):
+        """Missing cleaning hours must not invalidate an otherwise sound estimate."""
+        import copy
+
+        catalogue = copy.deepcopy(reference)
+        catalogue.cleaning_hours = {}
+        catalogue.machines = [
+            type(machine)(**{**machine.__dict__, "cleaning_hours": None})
+            for machine in catalogue.machines
+        ]
+        estimate, _ = estimate_manufacturing(spec("Capsule"), 7, catalogue)
         assert estimate.estimated
         assert any("cleaning" in step.lower() for step in estimate.uncosted_steps)
         assert not estimate.uncosted_critical_steps
@@ -109,7 +132,7 @@ class TestUncostableSteps:
     def test_each_missing_rate_is_named_for_operations(self, reference):
         result = run_pipeline(quote("Tablet"), reference, as_of=AS_OF)
         items = [flag.item for flag in result.flags if flag.owner == "Operations"]
-        assert any("Tablet press" in item for item in items)
+        assert any("Granulation" in item for item in items)
         assert any(flag.severity == "blocking" for flag in result.flags
                    if flag.owner == "Operations")
 
@@ -147,10 +170,14 @@ class TestBottlingSpeed:
         assert reference.bottles_per_hour(99999, "0") == pytest.approx(
             reference.bottles_per_hour(1200, "0"))
 
-    def test_bottling_cost_uses_it(self, reference):
+    def test_bottling_cost_uses_the_packaging_line_rate(self, reference):
+        """Operations' own line rate, plus the hour of set up it takes."""
         estimate, _ = estimate_manufacturing(spec("Capsule", count_per_bottle=60), 7, reference)
         bottling = next(step for step in estimate.steps if step.step == "Bottling")
-        assert bottling.hours == pytest.approx(2000 / 1890)
+        line = reference.packaging_line_row(60)
+        assert bottling.run_hours == pytest.approx(2000 / line.bottles_per_hour)
+        assert bottling.setup_hours == pytest.approx(line.setup_hours)
+        assert bottling.hours == pytest.approx(bottling.run_hours + bottling.setup_hours)
 
 
 class TestTestingCost:

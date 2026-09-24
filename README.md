@@ -103,12 +103,45 @@ blended rate:
 |---|---|
 | Compounding | the blend work centre |
 | Encapsulation | the selected machine, with hours from its run rate |
-| Bottling | the packaging line, at the CVC speed for this count and capsule size |
+| Bottling | the packaging line, at its confirmed rate for this bottle count |
 
-Bottling speed comes from the operational `CVC1 run rates` table, which varies
-with bottle count and capsule size: 1,890 bottles/hour at 60 count, 279 at 500.
+**Labor is per operator.** Packaging runs four operators on PKG1 and five on
+PKG2&3, so an hour on that line costs four or five times its labor rate;
+overhead is per machine hour and is not multiplied. Operations have not said
+which line a given product runs on, so the quote names the one it assumed and
+what the other would have cost.
+
+**Set up and cleaning are paid once per batch**, alongside compounding. Set up
+is two hours on an encapsulator, one on a packaging line, three on rapid pack.
+Cleaning follows the machine: two hours on the 705, four on the 1505, six on
+the 3005.
+
 The machine table holds **hard-capsule encapsulators only**, so a softgel or
 gummy run selects none rather than borrowing a capsule machine's rate.
+
+### Batches
+
+A run is split into batches by blender capacity, which is a *volume* limit, so
+the weight it holds depends on the blend's density:
+
+| Blender | Usable | at 0.4 g/mL | at 0.6 g/mL |
+|---|---|---|---|
+| 300 L | 240 L | 96 kg | 144 kg |
+| 600 L | 480 L | 192 kg | 288 kg |
+| 1,400 L | 1,120 L | 448 kg | 672 kg |
+| 1,800 L | 1,440 L | 576 kg | 864 kg |
+| 8,500 L | 6,800 L | 2,720 kg | 4,080 kg |
+
+Where every material in the formula has a measured density the blend's own is
+used; where one does not, Operations' quoting assumption of 0.4 g/mL applies,
+which gives the smaller batch. The smallest blender that holds the whole run in
+one batch is chosen; a run that fits in none is split across batches of the
+largest.
+
+This matters most at volume. Compounding, set up and cleaning are per-batch
+costs, and a single-batch model lets them amortise towards zero as the order
+grows. They cannot: **manufacturing cost per bottle is about 50% higher at
+100,000 bottles and above** than the single-batch model said.
 
 The machine follows the size of the run, using the thresholds from the
 operational price sheet:
@@ -177,7 +210,7 @@ Tests:
 .venv/Scripts/python -m pytest          # Windows
 ```
 
-242 tests.
+287 tests.
 
 ---
 
@@ -420,8 +453,10 @@ Two properties make it safe to hand round:
 | `capsule_capacity.csv` | Capsule size × blend density → mg capacity (R&D's chart) |
 | `bulk_density_measured.csv` | Part code → median, min and max bulk density across received lots |
 | `labor_rates.csv` | Rates, compounding bands, thresholds, defaults, volume ladder |
-| `machines.csv` | Machine, work centre, labor/OH, run rate, capsule band |
-| `work_centres.csv` | Labor and OH for compounding and bottling |
+| `machines.csv` | Machine, work centre, labor/OH, run rate, capsule band, crew, set up, cleaning |
+| `work_centres.csv` | Labor and OH per work centre, with crew size and set up time |
+| `blenders.csv` | Blender volumes, for splitting a run into batches |
+| `packaging_lines.csv` | Packaging line rates and crew by bottle count |
 | `bulk_density.csv` | Bulk density by identity, then by class, for the fill check |
 | `pricing.csv` | Target margin per sales channel |
 
@@ -465,7 +500,7 @@ backend/quickquote/
   schemas.py   the one shape every producer feeds and every consumer reads
   store.py     quote registry and artifacts
 frontend/      index.html · static/app.js · static/styles.css
-tests/         242 tests
+tests/         287 tests
 samples/       demo quote sheets and generated artifacts
 ```
 
@@ -473,7 +508,6 @@ samples/       demo quote sheets and generated artifacts
 
 ## Known limits
 
-- **Single-batch production only.** Multi-batch is out of scope, as specified.
 - **Manufacturing covers compounding, encapsulation and bottling.** The
   operational price sheet also carries tariffs, freight, remnants, testing by
   ingredient count and customer-specific deductions; those are not modelled here.
@@ -483,16 +517,24 @@ samples/       demo quote sheets and generated artifacts
   rather than a number, and vitamin B12, omega oils and excipients have no
   row at all. Each is carried as a stated working value that flags itself,
   never as R&D's answer.
-- **Encapsulation run rates are still placeholders.** The capsules-per-hour
-  figures in `machines.csv` are scaled from one calibrated batch. Bottling
-  speed, every labor/OH rate, the machine selection bands and the testing
-  bands are real; encapsulation throughput is not.
-- **Tablet, powder and gummy lines cannot be quoted yet.** Their run rates
-  are not on file, so those forms refuse to estimate manufacturing and name
-  what is missing. The *Process Steps* tab of the curation worksheet lists
-  every gap in one place.
-- **Cleaning hours are unknown for every line.** Cleaning is ancillary, so an
-  estimate still stands, but it is understated and says so.
+- **Two rates Operations did not supply.** The Schaefer's speed, set up and
+  cleaning are still placeholders, so runs under 100,000 capsules carry a
+  guessed encapsulation time; and the Chilsinator's granulation rate is not on
+  file at all.
+- **Tablets and gummies cannot be quoted yet.** A tablet is blocked by
+  granulation alone — Operations supplied the Fette press rate — and a gummy
+  by having no work centre at all, which Finance confirmed in September 2026 is
+  a cost model still being built. Capsules, powders and packets all quote. The
+  *Process Steps* tab of the curation worksheet lists every gap in one place.
+- **Which packaging line a product runs on is not known.** Operations gave
+  rates for PKG1 and PKG2&3 but not which runs what, and the two differ by
+  more than a third per bottle. Quotes assume PKG1 and say so, naming what
+  PKG2&3 would have cost. Set `packaging_line` in `labor_rates.csv` to change
+  the assumption.
+- **Two of Operations' own numbers disagree about compounding.** The
+  component-count bands charge 4.25–11.75 hours a batch; weighing, blending
+  and dispensing as Operations timed them come to a third of that. The engine
+  charges the bands and flags the gap rather than picking a side.
 - **Manufacturing no longer matches the specification's illustration.** The
   spec example assumes one blended labor/OH pair ($29.39 / $79.30); the
   shipped default costs each step at its own work centre, which is what the

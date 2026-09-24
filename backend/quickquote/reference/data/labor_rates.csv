@@ -23,3 +23,11 @@ bottle_fill_ratio,0.80,ratio,Share of bottle volume the capsules occupy when siz
 underfill_threshold,0.55,ratio,Capsule fill below this share of shell volume is flagged as over-sized
 near_capacity_threshold,0.90,ratio,Capsule fill above this share of shell volume is flagged as near capacity
 volume_breaks,1000;2500;5000;10000;25000;50000,bottles,Volume ladder costed alongside the quoted volume
+packaging_line,PKG1,text,Packaging line assumed when the quote does not name one - Operations have not said which line a product runs on
+packaging_line_variance_pct,15.0,percent,Gap between the packaging line rate and the CVC counter table that raises an Operations flag
+default_blend_density,0.4,g/mL,Blend density assumed when the formula's own density is unknown - Operations 2026-09 recommend this for quoting
+blender_usable_fraction,0.80,ratio,Share of a blender's nominal volume that is usable
+weighing_minutes_per_ingredient,5,minutes,Operations 2026-09 - weighing time per ingredient
+blending_minutes_per_batch,45,minutes,Operations 2026-09 - 30 to 45 minutes per batch; the upper bound is used
+dispensing_seconds_per_20kg,10,seconds,Operations 2026-09 - dispensing time per 20 kg
+compounding_variance_flag_pct,25.0,percent,Gap between the component-count bands and Operations' own timings that raises a flag

@@ -184,8 +184,15 @@ def run_pipeline(
         packaging.append(costed)
 
     # -- manufacturing -------------------------------------------------
+    # Batch count comes from the weight of blend the run needs against the
+    # blender that holds it, so the blend is weighed and measured first. Every
+    # formula line contributes its mass whether or not it could be priced.
+    blend_kg = sum(line.kg_per_bottle or 0.0 for line in ingredients) or None
+    blend_density = blend_density_g_ml(ingredients, reference)
+
     manufacturing, machine_notes = estimate_manufacturing(
-        product, len(parsed.formula), reference
+        product, len(parsed.formula), reference,
+        blend_kg_per_bottle=blend_kg, blend_density_g_ml=blend_density,
     )
     derivation_notes.extend(machine_notes)
 
@@ -219,6 +226,36 @@ def run_pipeline(
     if with_price_breaks:
         result.price_breaks = build_price_breaks(parsed, reference, as_of)
     return result
+
+
+def blend_density_g_ml(
+    ingredients: list[CostedIngredient], reference: ReferenceData
+) -> float | None:
+    """The blend's own bulk density, or ``None`` when any material lacks one.
+
+    Batch size is a volume limit, so density decides how many kilos a blender
+    holds. A blend is only as measured as its least-known material: if one
+    ingredient has no density on file, the whole figure is a guess, and
+    Operations' 0.4 g/mL quoting assumption is the honest answer instead.
+    """
+    grams = 0.0
+    millilitres = 0.0
+    for line in ingredients:
+        milligrams = line.formula_mg_per_serving
+        if not milligrams:
+            continue
+        measured = reference.measured_density_for(
+            line.input_part_code, line.match.matched_code
+        )
+        if measured is not None:
+            density = measured.median_g_ml
+        else:
+            density, defaulted = reference.density_for(line.identity, line.overage_class)
+            if defaulted:
+                return None
+        grams += milligrams / 1000.0
+        millilitres += (milligrams / 1000.0) / density
+    return grams / millilitres if millilitres else None
 
 
 # ------------------------------------------------------- price breaks

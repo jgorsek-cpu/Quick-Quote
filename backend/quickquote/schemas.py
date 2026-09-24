@@ -197,6 +197,12 @@ class ManufacturingStep:
     work_centre: str = ""
     basis: str = ""
     hours: float | None = None
+    # Hours split out: run time scales with the order, set up is paid once per
+    # batch, so the two move differently as volume changes.
+    run_hours: float | None = None
+    setup_hours: float | None = None
+    per_batch: bool = False
+    crew_size: int | None = None
     rate_per_hour: float | None = None
     cost_per_bottle: float | None = None
     reason: str = ""
@@ -230,6 +236,14 @@ class ManufacturingEstimate:
     machine_basis: str = ""
     bottles_in_run: int | None = None
     total_capsules: float | None = None
+    # Batch sizing: compounding, set up and cleaning are paid once per batch.
+    batches: int = 1
+    blender: str = ""
+    blend_kg: float | None = None
+    blend_density_g_ml: float | None = None
+    blend_density_assumed: bool = True
+    packaging_line: str = ""
+    packaging_line_assumed: bool = True
     compounding_rate: float | None = None
     encapsulation_rate: float | None = None
     bottling_rate: float | None = None

@@ -1,9 +1,9 @@
 work_centre,units_per_hour,unit,confirmed,notes
-705,16870,capsules,0,PLACEHOLDER scaled from one calibrated batch - confirm from the run rate sheet
-1505,36000,capsules,0,PLACEHOLDER - confirm
-3005,72000,capsules,0,PLACEHOLDER - confirm
-Schaefer,8000,capsules,0,PLACEHOLDER - confirm
-Pakrapid,2880,packets,0,Adjusted machine speed from the packrapit OH sheet at 40% OEE - confirm
-Tablet press,,tablets,0,Not on file - Operations to supply
-Chilsinator,,kg,0,Not on file - Operations to supply
-Powder Fill,,units,0,Not on file - Operations to supply
+705,32000,capsules,1,Operations 2026-09
+1505,75000,capsules,1,Operations 2026-09
+3005,110000,capsules,1,Operations 2026-09
+Schaefer,8000,capsules,0,PLACEHOLDER - not in the Operations table; confirm
+Pakrapid,3500,packets,1,Operations 2026-09 - rapid pack
+Tablet press,141000,tablets,1,Operations 2026-09 - Fette
+Chilsinator,,kg,0,Granulation - not on file; Operations to supply
+Powder Fill,1200,bottles,1,Operations 2026-09 - powder line

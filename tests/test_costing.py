@@ -135,7 +135,7 @@ class TestManufacturing:
                         count_per_bottle=60), 7, reference)
         assert estimate.machine_assumed
         assert estimate.machine == "Schaefer"       # 60,000 capsules
-        assert estimate.bottling_line == "CVC1"
+        assert estimate.bottling_line == "PKG1"
 
 
 class TestSpecificationExample:

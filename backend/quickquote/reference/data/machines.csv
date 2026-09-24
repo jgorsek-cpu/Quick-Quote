@@ -1,5 +1,5 @@
-machine,work_centre,labor_rate_per_hour,overhead_rate_per_hour,capsules_per_hour,min_capsules,max_capsules,notes
-Schaefer,Schaefer,27.755,76.18192308243184,8000,0,100000,Small runs under 100K capsules
-BOSCH 705,705,27.755,83.94100263829264,16870,100000,400000,Standard run 100K to 400K capsules
-BOSCH 1505,1505,27.755,80.55125968957469,36000,400000,2000000,Large run 400K to 2000K capsules
-BOSCH 3005,3005,27.755,81.90720920880547,72000,2000000,,Highest volume 2000K capsules and above
+machine,work_centre,labor_rate_per_hour,overhead_rate_per_hour,capsules_per_hour,min_capsules,max_capsules,crew_size,setup_hours,cleaning_hours,confirmed,notes
+Schaefer,Schaefer,27.755,76.18192308243184,8000,0,100000,1,,,0,Under 100K capsules - band confirmed by Operations 2026-09; speed setup and cleaning are still PLACEHOLDERS
+BOSCH 705,705,27.755,83.94100263829264,32000,100000,400000,1,2,2,1,100K to under 400K capsules - Operations 2026-09
+BOSCH 1505,1505,27.755,80.55125968957469,75000,400000,2000000,1,2,4,1,400K to under 2M capsules - Operations 2026-09
+BOSCH 3005,3005,27.755,81.90720920880547,110000,2000000,,1,2,6,1,2M capsules and above - Operations 2026-09

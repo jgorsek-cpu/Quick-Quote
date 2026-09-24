@@ -241,17 +241,25 @@ def export(reference: ReferenceData, destination: Path, limit: int | None = None
         ], start=1):
             sheet.cell(row=index, column=column, value=value)
         sheet.cell(row=index, column=5).fill = PatternFill("solid", fgColor=amber)
-    sheet.cell(row=len(reference.machines) + 3, column=1,
-               value="Capsules per hour are placeholders scaled from one calibrated "
-                     "rate. Replace them from the CVC run rate sheet.").font = Font(italic=True)
+    unconfirmed = [machine.machine for machine in reference.machines
+                   if not machine.confirmed]
+    sheet.cell(
+        row=len(reference.machines) + 3, column=1,
+        value=(
+            "Speeds, set up and cleaning come from Operations (2026-09). Still "
+            f"unconfirmed: {', '.join(unconfirmed)}." if unconfirmed
+            else "Speeds, set up and cleaning come from Operations (2026-09)."
+        ),
+    ).font = Font(italic=True)
 
     # -- process steps ---------------------------------------------------
     # Every route step whose rate or throughput is missing, so Operations can
     # see in one place what stops a line being quotable.
     sheet = book.create_sheet(STEPS_SHEET)
     header(sheet, ["Dosage Form", "Step", "Work Centre", "Basis", "Core Step",
-                   "Units per Hour *", "Cleaning Hours *", "Status"])
-    for width, letter in zip([16, 24, 22, 26, 11, 18, 18, 46], "ABCDEFGH"):
+                   "Units per Hour *", "Cleaning Hours *", "Crew Size *",
+                   "Set Up Hours *", "Status"])
+    for width, letter in zip([16, 24, 22, 26, 11, 18, 18, 13, 16, 46], "ABCDEFGHIJ"):
         sheet.column_dimensions[letter].width = width
 
     index = 2
@@ -263,6 +271,23 @@ def export(reference: ReferenceData, destination: Path, limit: int | None = None
             has_rate = reference.centre_rate(step.work_centre) is not None
             speed = rate_row.units_per_hour if rate_row else None
             cleaning = reference.cleaning_hours.get(step.work_centre)
+            centre = reference.work_centres.get(step.work_centre)
+
+            # Encapsulation cleaning is read from whichever machine the run
+            # selects, so an empty cell here is not a gap. It is said in the
+            # status rather than the hours column, which is written back.
+            by_machine = ""
+            if cleaning is None and "encap" in step.work_centre.lower():
+                machine_hours = sorted(
+                    {machine.cleaning_hours for machine in reference.machines
+                     if machine.cleaning_hours}
+                )
+                if machine_hours:
+                    by_machine = (
+                        f"Set by machine ({machine_hours[0]:g}-{machine_hours[-1]:g} h)"
+                        if len(machine_hours) > 1
+                        else f"Set by machine ({machine_hours[0]:g} h)"
+                    )
 
             if not has_rate and step.work_centre:
                 status = "No labor/OH rate on file"
@@ -271,7 +296,7 @@ def export(reference: ReferenceData, destination: Path, limit: int | None = None
             elif needs_speed and not speed:
                 status = "Run rate missing"
             elif needs_clean and cleaning is None:
-                status = "Cleaning hours missing"
+                status = by_machine or "Cleaning hours missing"
             else:
                 status = "OK"
 
@@ -280,15 +305,21 @@ def export(reference: ReferenceData, destination: Path, limit: int | None = None
                 "core" if step.critical else "ancillary",
                 speed if needs_speed else None,
                 cleaning if needs_clean else None,
+                centre.crew_size if centre else None,
+                centre.setup_hours if centre and not needs_clean else None,
                 status,
             ], start=1):
                 sheet.cell(row=index, column=column, value=value)
             if needs_speed:
                 sheet.cell(row=index, column=6).fill = PatternFill("solid", fgColor=amber)
-            if needs_clean:
+            if needs_clean and not by_machine:
                 sheet.cell(row=index, column=7).fill = PatternFill("solid", fgColor=amber)
+            if centre is not None and centre.crew_size is None:
+                sheet.cell(row=index, column=8).fill = PatternFill("solid", fgColor=amber)
+            if centre is not None and centre.setup_hours is None and not needs_clean:
+                sheet.cell(row=index, column=9).fill = PatternFill("solid", fgColor=amber)
             if status != "OK" and step.critical:
-                sheet.cell(row=index, column=8).fill = PatternFill("solid", fgColor="FCE4E4")
+                sheet.cell(row=index, column=10).fill = PatternFill("solid", fgColor="FCE4E4")
             index += 1
     sheet.cell(row=index + 1, column=1,
                value="A core step with a missing rate stops that dosage form being "
@@ -328,6 +359,20 @@ def export(reference: ReferenceData, destination: Path, limit: int | None = None
 
 
 # -------------------------------------------------------------- apply
+
+def _as_number(value):
+    """A cell's number, or ``None`` when it does not hold one.
+
+    People type into these cells, and a cell reading "ask Chelsea" must not
+    stop the rest of the worksheet being applied.
+    """
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
 
 def _changed(new_value, current_value) -> bool:
     """True when a worksheet cell actually answers something.
@@ -460,16 +505,16 @@ def apply(worksheet: Path, data_dir: Path) -> dict:
             centre = (get("Work Centre") or "").strip()
             if not centre:
                 continue
-            speed = get("Units per Hour *")
+            speed = _as_number(get("Units per Hour *"))
             if centre in run_rates and _changed(speed, run_rates[centre].get("units_per_hour")):
-                run_rates[centre]["units_per_hour"] = f"{float(speed):g}"
+                run_rates[centre]["units_per_hour"] = f"{speed:g}"
                 run_rates[centre]["confirmed"] = "1"
                 run_rates[centre]["notes"] = "Confirmed by Operations"
                 changed["run_rates"] = changed.get("run_rates", 0) + 1
 
-            hours = get("Cleaning Hours *")
+            hours = _as_number(get("Cleaning Hours *"))
             if centre in cleaning and _changed(hours, cleaning[centre].get("hours_per_batch")):
-                cleaning[centre]["hours_per_batch"] = f"{float(hours):g}"
+                cleaning[centre]["hours_per_batch"] = f"{hours:g}"
                 cleaning[centre]["confirmed"] = "1"
                 cleaning[centre]["notes"] = "Confirmed by Operations"
                 changed["cleaning_hours"] = changed.get("cleaning_hours", 0) + 1

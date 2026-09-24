@@ -9,13 +9,20 @@ throughput is not on file is **not estimated and not silently dropped** -- it
 is recorded, reported to Operations, and the total is marked incomplete, so a
 tablet quote cannot quietly come back priced as though pressing were free.
 
-Single-batch production is assumed; multi-batch is out of scope for v1.
+A run is split into batches by blender capacity. Compounding, set up and
+cleaning are paid once per batch, so a run too large for one batch pays them
+again for every batch it needs; run time on a machine scales with the order
+either way.
+
+Labor is per operator. Packaging runs four or five of them, so an hour on that
+line costs four or five times its labor rate; overhead is per machine hour and
+is not multiplied.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ..reference.loader import ReferenceData, RouteStep
+from ..reference.loader import PackagingLine, ReferenceData, RouteStep
 from ..schemas import ManufacturingEstimate, ManufacturingStep, ProductSpec
 from .derive import derive_machine, total_capsules
 
@@ -29,10 +36,16 @@ class _Context:
     component_count: int
     count_per_bottle: int | None
     capsule_size: str | None
+    batches: int = 1
+    packaging_line: "PackagingLine | None" = None
 
 
 def estimate_manufacturing(
-    product: ProductSpec, component_count: int, reference: ReferenceData
+    product: ProductSpec,
+    component_count: int,
+    reference: ReferenceData,
+    blend_kg_per_bottle: float | None = None,
+    blend_density_g_ml: float | None = None,
 ) -> tuple[ManufacturingEstimate, list[str]]:
     """Cost every step of this dosage form's route, or say why it could not."""
     machine, notes = derive_machine(product, reference)
@@ -73,12 +86,32 @@ def estimate_manufacturing(
 
     estimate.bottles_in_run = bottles
     estimate.total_capsules = total_capsules(product)
+
+    # How many batches the run needs. Blender capacity is a volume limit, so
+    # the weight it holds depends on the blend's density: where every material
+    # has a density on file the blend's own is used, otherwise Operations'
+    # quoting assumption of 0.4 g/mL, which gives the smaller batch.
+    blend_kg = (blend_kg_per_bottle or 0.0) * bottles or None
+    batches, blender, density = reference.batches_for(blend_kg, blend_density_g_ml)
+    estimate.batches = batches
+    estimate.blender = blender.blender if blender else ""
+    estimate.blend_kg = blend_kg
+    estimate.blend_density_g_ml = density
+    estimate.blend_density_assumed = blend_density_g_ml is None
+
+    line_row = reference.packaging_line_row(product.count_per_bottle)
+    estimate.packaging_line = line_row.line if line_row else ""
+    estimate.packaging_line_assumed = True
+    estimate.bottling_line = estimate.packaging_line or estimate.bottling_line
+
     context = _Context(
         bottles=bottles,
         units=estimate.total_capsules,
         component_count=component_count,
         count_per_bottle=product.count_per_bottle,
         capsule_size=product.capsule_size,
+        batches=batches,
+        packaging_line=line_row,
     )
 
     for step in route:
@@ -125,14 +158,31 @@ def estimate_manufacturing(
         )
     elif estimate.uncosted_steps:
         estimate.reason = (
-            f"Single-batch production assumed. {len(estimate.uncosted_steps)} "
+            f"{_batch_phrase(estimate)}. {len(estimate.uncosted_steps)} "
             f"ancillary step(s) could not be costed, so this total is understated: "
             + ", ".join(estimate.uncosted_steps)
         )
     else:
-        estimate.reason = "Single-batch production assumed"
+        estimate.reason = _batch_phrase(estimate)
 
     return estimate, notes
+
+
+def _batch_phrase(estimate: ManufacturingEstimate) -> str:
+    """How the run was split, and on what."""
+    if not estimate.blender:
+        return (
+            "Single batch assumed - blend weight unknown" if not estimate.blend_kg
+            else "Single batch assumed - no blender capacity on file"
+        )
+    plural = "" if estimate.batches == 1 else "es"
+    basis = "assumed" if estimate.blend_density_assumed else "from the formula"
+    return (
+        f"{estimate.batches} batch{plural} on the {estimate.blender} blender "
+        f"({estimate.blend_kg:,.0f} kg of blend at {estimate.blend_density_g_ml:g} g/mL, "
+        f"{basis})" if estimate.blend_kg else
+        f"Single batch on the {estimate.blender} blender - blend weight unknown"
+    )
 
 
 def _cost_step(
@@ -153,7 +203,13 @@ def _cost_step(
         work_centre = machine.work_centre
         result.work_centre = machine.machine
 
-    rate = reference.centre_rate(work_centre)
+    # The packaging line decides its own crew: the same centre runs four
+    # operators on PKG1 and five on PKG2&3.
+    crew = None
+    if step.basis == "bottles_per_hour_table" and context.packaging_line is not None:
+        crew = context.packaging_line.crew_size
+
+    rate = reference.centre_rate(work_centre, crew)
     if rate is None:
         result.reason = (
             f"No labor and overhead rate on file for "
@@ -161,60 +217,109 @@ def _cost_step(
         )
         return result
     result.rate_per_hour = rate
+    centre = reference.work_centres.get(work_centre)
+    result.crew_size = crew if crew is not None else (centre.crew_size if centre else None)
 
-    hours, reason = _hours_for(step, context, reference, machine, work_centre)
+    hours, per_batch, reason = _hours_for(step, context, reference, machine, work_centre)
     if hours is None:
         result.reason = reason
         return result
 
-    result.hours = hours
-    result.cost_per_bottle = hours * rate / context.bottles
+    # Set up is paid once per batch, like the batch work itself.
+    setup = _setup_hours(step, context, reference, machine, work_centre)
+    run_hours = hours * context.batches if per_batch else hours
+
+    result.per_batch = per_batch
+    result.run_hours = run_hours
+    result.setup_hours = setup * context.batches if setup else None
+    result.hours = run_hours + (result.setup_hours or 0.0)
+    result.cost_per_bottle = result.hours * rate / context.bottles
     return result
+
+
+def _setup_hours(
+    step: RouteStep, context: _Context, reference: ReferenceData, machine, work_centre: str
+) -> float | None:
+    """Set up time for one batch at this step, or ``None`` when not on file.
+
+    Cleaning steps carry no set up of their own -- the cleaning time *is* the
+    step -- and an unknown set up understates rather than blocks, because a
+    step that runs is not made unquotable by one missing figure.
+    """
+    if step.basis == "fixed_hours":
+        return None
+    if step.basis == "bottles_per_hour_table" and context.packaging_line is not None:
+        return context.packaging_line.setup_hours
+    if step.basis == "units_per_hour_machine" and machine is not None:
+        return machine.setup_hours
+    centre = reference.work_centres.get(work_centre)
+    return centre.setup_hours if centre else None
 
 
 def _hours_for(
     step: RouteStep, context: _Context, reference: ReferenceData, machine, work_centre: str
-) -> tuple[float | None, str]:
-    """Hours this step takes, or the reason that cannot be worked out."""
+) -> tuple[float | None, bool, str]:
+    """``(hours, per_batch, reason)`` for this step.
+
+    ``per_batch`` says whether the hours are paid once per batch -- compounding
+    and cleaning are -- or already cover the whole run, as machine time does.
+    """
     if step.basis == "batch_hours_by_components":
-        return reference.compounding_hours(context.component_count), ""
+        return reference.compounding_hours(context.component_count), True, ""
 
     if step.basis == "fixed_hours":
-        hours = reference.cleaning_hours.get(work_centre)
+        # Encapsulation cleaning depends on the machine: two hours on the 705,
+        # six on the 3005, so it is read from the machine the run selected.
+        hours = None
+        if machine is not None and "encap" in work_centre.lower():
+            hours = machine.cleaning_hours
         if hours is None:
-            return None, (
+            hours = reference.cleaning_hours.get(work_centre)
+        if hours is None and context.packaging_line is not None \
+                and "packaging" in work_centre.lower():
+            hours = context.packaging_line.cleaning_hours
+        if hours is None:
+            return None, True, (
                 f"Cleaning time for {work_centre} is not on file - "
                 "Operations to supply."
             )
-        return hours, ""
+        return hours, True, ""
 
     if step.basis in ("units_per_hour", "units_per_hour_machine"):
         if step.basis == "units_per_hour_machine" and machine is not None:
-            speed = machine.capsules_per_hour
+            speed, unit = machine.capsules_per_hour, "capsules"
         else:
             rate_row = reference.run_rates.get(work_centre)
             speed = rate_row.units_per_hour if rate_row else None
+            unit = (rate_row.unit if rate_row else "") or "units"
         if not speed:
-            return None, (
+            return None, False, (
                 f"Run rate for {work_centre} is not on file - "
                 "Operations to supply units per hour."
             )
-        if not context.units:
-            return None, (
+        # A line rated in bottles per hour fills bottles, not capsules: the
+        # powder line runs 1,200 bottles an hour whatever goes in them.
+        quantity = context.bottles if unit.strip().lower() == "bottles" else context.units
+        if not quantity:
+            return None, False, (
                 "Units in the run are unknown: count per bottle and volume are "
                 "both needed."
             )
-        return context.units / speed, ""
+        return quantity / speed, False, ""
 
     if step.basis == "bottles_per_hour_table":
-        speed = reference.bottles_per_hour(context.count_per_bottle, context.capsule_size)
+        speed = None
+        if context.packaging_line is not None:
+            speed = context.packaging_line.bottles_per_hour
+        if not speed:
+            speed = reference.bottles_per_hour(context.count_per_bottle, context.capsule_size)
         if not speed:
             speed = reference.rate("bottling_bottles_per_hour", 0) or None
         if not speed:
-            return None, "Bottling line speed is not on file for this count."
-        return context.bottles / speed, ""
+            return None, False, "Bottling line speed is not on file for this count."
+        return context.bottles / speed, False, ""
 
-    return None, f"Unknown basis '{step.basis}' for this step."
+    return None, False, f"Unknown basis '{step.basis}' for this step."
 
 
 def testing_cost_per_bottle(

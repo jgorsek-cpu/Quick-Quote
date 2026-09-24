@@ -296,3 +296,41 @@ class TestChangeDetection:
     ])
     def test_only_a_real_answer_counts(self, new, current, expected):
         assert _changed(new, current) is expected
+
+
+class TestOperationsColumns:
+    def test_the_steps_tab_shows_crew_and_set_up(self, worksheet):
+        sheet = load_workbook(worksheet)["Process Steps"]
+        header = [cell.value for cell in sheet[1]]
+        assert "Crew Size *" in header and "Set Up Hours *" in header
+        rows = [dict(zip(header, row))
+                for row in sheet.iter_rows(min_row=2, values_only=True) if row[1]]
+        bottling = next(row for row in rows if row["Work Centre"] == "Packaging")
+        assert bottling["Crew Size *"] == 4 and bottling["Set Up Hours *"] == 1
+
+    def test_machine_specific_cleaning_is_said_not_left_blank(self, worksheet):
+        """An empty hours cell for encapsulation cleaning is not a gap."""
+        sheet = load_workbook(worksheet)["Process Steps"]
+        header = [cell.value for cell in sheet[1]]
+        rows = [dict(zip(header, row))
+                for row in sheet.iter_rows(min_row=2, values_only=True) if row[1]]
+        encap = next(row for row in rows if row["Work Centre"] == "Cleaning- Encap")
+        assert encap["Cleaning Hours *"] is None
+        assert "Set by machine" in encap["Status"]
+
+    def test_text_in_a_number_cell_does_not_stop_the_apply(self, worksheet, data_dir):
+        """People type into these cells. One bad one must not lose the rest."""
+        book = load_workbook(worksheet)
+        sheet = book["Process Steps"]
+        header = [cell.value for cell in sheet[1]]
+        speed_column = header.index("Units per Hour *") + 1
+        rows = {sheet.cell(row=index, column=header.index("Work Centre") + 1).value: index
+                for index in range(2, sheet.max_row + 1)}
+        sheet.cell(row=rows["Chilsinator"], column=speed_column).value = "ask Chelsea"
+        sheet.cell(row=rows["Tablet press"], column=speed_column).value = 150000
+        book.save(worksheet)
+
+        assert apply(worksheet, data_dir)["run_rates"] == 1
+        rates = load_reference_data(data_dir).run_rates
+        assert rates["Tablet press"].units_per_hour == 150000
+        assert rates["Chilsinator"].units_per_hour is None

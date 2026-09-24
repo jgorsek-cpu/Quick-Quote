@@ -1,0 +1,10 @@
+line,count_per_bottle,bottles_per_hour,crew_size,setup_hours,cleaning_hours,confirmed,notes
+PKG1,60,1800,4,1,1,1,Operations 2026-09
+PKG1,90,1620,4,1,1,1,Operations 2026-09
+PKG1,120,1300,4,1,1,1,Operations 2026-09
+PKG1,200,900,4,1,1,1,Operations 2026-09
+PKG2&3,60,3147,5,1,1,1,Operations 2026-09
+PKG2&3,90,3109,5,1,1,1,Operations 2026-09
+PKG2&3,120,3054,5,1,1,1,Operations 2026-09
+PKG2&3,200,2661,5,1,1,1,Operations 2026-09
+PKG2&3,400,1325,5,1,1,1,Operations 2026-09

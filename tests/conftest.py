@@ -37,12 +37,43 @@ def spec_reference(tmp_path_factory):
     for path in source.glob("*.csv"):
         shutil.copy(path, target / path.name)
 
-    # The example assumes one flat bottling speed, so the real speed table is
+    # The example assumes one flat bottling speed, so the real speed tables are
     # withheld and the engine falls back to that rate. It also has no separate
     # testing line -- its breakdown is materials, packaging and manufacturing
-    # only -- while the operational price sheet does carry one.
+    # only -- while the operational price sheet does carry one. Blender
+    # capacity is withheld too: the example is a single batch by assumption.
     (target / "bottling_rates.csv").unlink(missing_ok=True)
+    (target / "packaging_lines.csv").unlink(missing_ok=True)
     (target / "testing_costs.csv").unlink(missing_ok=True)
+    (target / "blenders.csv").unlink(missing_ok=True)
+
+    # The example also predates the speeds Operations confirmed in 2026-09 --
+    # it implies 16,870 capsules an hour on the 705 where the real machine
+    # runs 32,000 -- and has no set up or cleaning time at all. Those are
+    # restored here so the example still reproduces to the cent.
+    machines_path = target / "machines.csv"
+    machines = list(csv.DictReader(machines_path.open()))
+    spec_speeds = {"BOSCH 705": 16870, "BOSCH 1505": 36000, "BOSCH 3005": 72000}
+    for row in machines:
+        row["capsules_per_hour"] = spec_speeds.get(row["machine"], row["capsules_per_hour"])
+        row["setup_hours"] = ""
+        row["cleaning_hours"] = ""
+    with machines_path.open("w", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=list(machines[0]))
+        writer.writeheader()
+        writer.writerows(machines)
+
+    for name, keep in (("work_centres.csv", ("crew_size", "setup_hours")),
+                       ("cleaning_hours.csv", ("hours_per_batch",))):
+        path = target / name
+        rows = list(csv.DictReader(path.open()))
+        for row in rows:
+            for column in keep:
+                row[column] = ""
+        with path.open("w", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=list(rows[0]))
+            writer.writeheader()
+            writer.writerows(rows)
 
     rates_path = target / "labor_rates.csv"
     rows = list(csv.DictReader(rates_path.open()))

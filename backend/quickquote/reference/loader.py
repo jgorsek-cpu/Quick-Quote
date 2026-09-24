@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import csv
 import threading
+from math import ceil
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
@@ -83,6 +84,10 @@ class Machine:
     capsules_per_hour: float
     min_capsules: float
     max_capsules: float | None
+    crew_size: int | None = None
+    setup_hours: float | None = None
+    cleaning_hours: float | None = None
+    confirmed: bool = False
     notes: str = ""
 
     @property
@@ -97,16 +102,62 @@ class Machine:
 
 @dataclass(frozen=True)
 class WorkCentre:
-    """Labor and overhead for one work centre."""
+    """Labor, overhead, crew and set up time for one work centre.
+
+    Labor is per operator: packaging runs four or five of them, so an hour on
+    that line costs four or five times its labor rate. Overhead is per machine
+    hour and is not multiplied.
+    """
 
     work_centre: str
     labor_rate_per_hour: float
     overhead_rate_per_hour: float
+    crew_size: int | None = None
+    setup_hours: float | None = None
     notes: str = ""
 
     @property
     def combined_rate(self) -> float:
+        """Labor for the whole crew plus machine overhead, per hour."""
+        return self.labor_rate_per_hour * (self.crew_size or 1) + self.overhead_rate_per_hour
+
+    @property
+    def single_operator_rate(self) -> float:
+        """The rate before crew size, for comparing against an older quote."""
         return self.labor_rate_per_hour + self.overhead_rate_per_hour
+
+
+@dataclass(frozen=True)
+class Blender:
+    """A blender and the batch it can hold.
+
+    Batch size is a volume limit, not a weight one, so the weight a blender
+    holds depends on the blend's bulk density: 240 usable litres is 96 kg of a
+    0.4 g/mL blend and 144 kg of a 0.6 g/mL one.
+    """
+
+    blender: str
+    litres: float
+    usable_litres: float
+    confirmed: bool = False
+    notes: str = ""
+
+    def max_kg(self, density_g_ml: float) -> float:
+        return self.usable_litres * density_g_ml
+
+
+@dataclass(frozen=True)
+class PackagingLine:
+    """One count row of a packaging line's run rate."""
+
+    line: str
+    count_per_bottle: int
+    bottles_per_hour: float
+    crew_size: int | None = None
+    setup_hours: float | None = None
+    cleaning_hours: float | None = None
+    confirmed: bool = False
+    notes: str = ""
 
 
 @dataclass(frozen=True)
@@ -306,6 +357,8 @@ class ReferenceData:
     work_centres: dict[str, WorkCentre] = field(default_factory=dict)
     routes: dict[str, list[RouteStep]] = field(default_factory=dict)
     run_rates: dict[str, RunRate] = field(default_factory=dict)
+    blenders: list[Blender] = field(default_factory=list)
+    packaging_lines: list[PackagingLine] = field(default_factory=list)
     cleaning_hours: dict[str, float | None] = field(default_factory=dict)
     bottling_rates: list[dict] = field(default_factory=list)
     testing_bands: list[TestingBand] = field(default_factory=list)
@@ -399,19 +452,29 @@ class ReferenceData:
                 breaks.append(int(value))
         return sorted(set(breaks))
 
-    def centre_rate(self, work_centre: str | None) -> float | None:
-        """Combined labor + OH for a named work centre.
+    def centre_rate(
+        self, work_centre: str | None, crew_size: int | None = None
+    ) -> float | None:
+        """Labor for the crew plus machine overhead, for a named work centre.
+
+        ``crew_size`` overrides the centre's own figure, which is what the
+        packaging line needs: the same centre runs four operators on PKG1 and
+        five on PKG2&3.
 
         With ``use_work_centre_rates`` off, every step is costed at the single
-        blended pair the specification assumes, so a named centre still has to
-        exist but its own rate is not used.
+        blended pair the specification assumes -- one operator, no crew
+        multiplier -- so a named centre still has to exist but its own rate is
+        not used.
         """
         if not work_centre:
             return None
         centre = self.work_centres.get(work_centre)
         if centre is None:
             return None
-        return centre.combined_rate if self.use_work_centre_rates else self.combined_rate
+        if not self.use_work_centre_rates:
+            return self.combined_rate
+        crew = crew_size if crew_size is not None else (centre.crew_size or 1)
+        return centre.labor_rate_per_hour * crew + centre.overhead_rate_per_hour
 
     def step_rate(self, step: str) -> float:
         """Combined labor + OH for a legacy named step."""
@@ -482,9 +545,16 @@ class ReferenceData:
         return None
 
     def density_for(self, identity: str | None, overage_class: str | None) -> tuple[float, bool]:
-        """Bulk density in g/mL, and whether the global default was applied."""
+        """Bulk density in g/mL, and whether the global default was applied.
+
+        An overage class of ``default`` means the class could not be worked
+        out, not that "default" is the class. It shares a name with the
+        fallback density row, so it is skipped here -- otherwise the line
+        least likely to have a real density would be the one reported as
+        having one.
+        """
         for key in (identity, overage_class):
-            if key:
+            if key and str(key).strip().lower() != "default":
                 found = self.bulk_density.get(str(key).strip().lower())
                 if found:
                     return found, False
@@ -546,6 +616,105 @@ class ReferenceData:
         """The density columns R&D's calculator tabulates for one size."""
         grid = self.capsule_capacity.get(str(capsule_size or "").strip().lower())
         return sorted(grid) if grid else []
+
+    def compounding_hours_from_operations(
+        self, component_count: int, blend_kg: float | None
+    ) -> float | None:
+        """Blend time built up from Operations' own timings, for one batch.
+
+        Weighing, blending and dispensing, as Operations timed them in
+        September 2026. This is not what the engine charges -- the
+        component-count bands are -- but the two disagree, and a quote is
+        better for saying so than for quietly picking one.
+        """
+        per_ingredient = self.rate("weighing_minutes_per_ingredient", 0)
+        per_batch = self.rate("blending_minutes_per_batch", 0)
+        per_20kg = self.rate("dispensing_seconds_per_20kg", 0)
+        if not per_ingredient and not per_batch:
+            return None
+        minutes = per_ingredient * max(0, component_count) + per_batch
+        if blend_kg and per_20kg:
+            minutes += (blend_kg / 20.0) * per_20kg / 60.0
+        return minutes / 60.0
+
+    # -- batches ------------------------------------------------------
+    @property
+    def default_blend_density(self) -> float:
+        """Blend density assumed when the formula's own is unknown.
+
+        Operations recommend 0.4 g/mL for quoting: most blends fall between
+        0.4 and 0.6, and the lower figure gives the smaller -- so the more
+        conservative -- batch.
+        """
+        return self.rate("default_blend_density", 0.4)
+
+    def choose_blender(self, batch_kg: float | None, density_g_ml: float) -> Blender | None:
+        """Smallest blender that holds the whole run, else the largest there is.
+
+        A run that fits in one batch should not be scheduled on the 8,500 L
+        vessel just because it exists; a run that fits in none is split across
+        batches of the largest blender, which is the fewest batches possible.
+        """
+        if not self.blenders or not density_g_ml or not batch_kg:
+            # Naming a vessel for a weight nobody knows would read as a
+            # decision rather than the absence of one.
+            return None
+        for blender in self.blenders:              # sorted by usable volume
+            if blender.max_kg(density_g_ml) >= batch_kg:
+                return blender
+        return self.blenders[-1]
+
+    def batches_for(
+        self, blend_kg: float | None, density_g_ml: float | None = None
+    ) -> tuple[int, Blender | None, float]:
+        """``(batches, blender, density)`` for a run of this blend weight.
+
+        Compounding, set up and cleaning are paid once per batch, so a run too
+        large for one batch costs them again for every batch it needs.
+        """
+        density = density_g_ml or self.default_blend_density
+        blender = self.choose_blender(blend_kg, density)
+        if blender is None or not blend_kg or blend_kg <= 0:
+            return 1, blender, density
+        capacity = blender.max_kg(density)
+        if capacity <= 0:
+            return 1, blender, density
+        return max(1, ceil(blend_kg / capacity)), blender, density
+
+    # -- packaging lines ----------------------------------------------
+    @property
+    def default_packaging_line(self) -> str:
+        return self.text_rate("packaging_line", "PKG1")
+
+    def packaging_line_names(self) -> list[str]:
+        seen: list[str] = []
+        for row in self.packaging_lines:
+            if row.line not in seen:
+                seen.append(row.line)
+        return seen
+
+    def packaging_line_row(
+        self, count_per_bottle: int | None, line: str | None = None
+    ) -> PackagingLine | None:
+        """The line's row for this bottle count.
+
+        A count between two rows takes the slower of the two, and a count past
+        the last row takes the last: a line does not speed up because nobody
+        measured that size.
+        """
+        wanted = (line or self.default_packaging_line).strip().lower()
+        rows = sorted(
+            (row for row in self.packaging_lines if row.line.strip().lower() == wanted),
+            key=lambda row: row.count_per_bottle,
+        )
+        if not rows:
+            return None
+        if not count_per_bottle:
+            return rows[0]
+        for row in rows:
+            if count_per_bottle <= row.count_per_bottle:
+                return row
+        return rows[-1]
 
     def density_columns(self) -> list[float]:
         """Every density column R&D's capacity chart carries."""
@@ -791,6 +960,10 @@ def load_reference_data(directory: Path | None = None) -> ReferenceData:
                 labor_rate_per_hour=rate_l,
                 overhead_rate_per_hour=rate_o,
                 capsules_per_hour=speed,
+                crew_size=_to_int(row.get("crew_size")),
+                setup_hours=_to_float(row.get("setup_hours")),
+                cleaning_hours=_to_float(row.get("cleaning_hours")),
+                confirmed=(row.get("confirmed") or "").strip() == "1",
                 min_capsules=_to_float(row.get("min_capsules"), 0.0) or 0.0,
                 max_capsules=_to_float(row.get("max_capsules")),
                 notes=row.get("notes", ""),
@@ -807,8 +980,46 @@ def load_reference_data(directory: Path | None = None) -> ReferenceData:
                 work_centre=name,
                 labor_rate_per_hour=rate_l,
                 overhead_rate_per_hour=rate_o,
+                crew_size=_to_int(row.get("crew_size")),
+                setup_hours=_to_float(row.get("setup_hours")),
                 notes=row.get("notes", ""),
             )
+
+    for row in _read_csv(base / "blenders.csv"):
+        name = (row.get("blender") or "").strip()
+        usable = _to_float(row.get("usable_litres"))
+        litres = _to_float(row.get("litres"), usable)
+        if not name or not usable:
+            continue
+        data.blenders.append(
+            Blender(
+                blender=name,
+                litres=litres or usable,
+                usable_litres=usable,
+                confirmed=(row.get("confirmed") or "").strip() == "1",
+                notes=row.get("notes", ""),
+            )
+        )
+    data.blenders.sort(key=lambda item: item.usable_litres)
+
+    for row in _read_csv(base / "packaging_lines.csv"):
+        name = (row.get("line") or "").strip()
+        count = _to_int(row.get("count_per_bottle"))
+        speed = _to_float(row.get("bottles_per_hour"))
+        if not name or not count or not speed:
+            continue
+        data.packaging_lines.append(
+            PackagingLine(
+                line=name,
+                count_per_bottle=count,
+                bottles_per_hour=speed,
+                crew_size=_to_int(row.get("crew_size")),
+                setup_hours=_to_float(row.get("setup_hours")),
+                cleaning_hours=_to_float(row.get("cleaning_hours")),
+                confirmed=(row.get("confirmed") or "").strip() == "1",
+                notes=row.get("notes", ""),
+            )
+        )
 
     for row in _read_csv(base / "process_routes.csv"):
         form = (row.get("dosage_form") or "").strip().lower()
