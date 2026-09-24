@@ -2,7 +2,7 @@ work_centre,units_per_hour,unit,confirmed,notes
 705,32000,capsules,1,Operations 2026-09
 1505,75000,capsules,1,Operations 2026-09
 3005,110000,capsules,1,Operations 2026-09
-Schaefer,8000,capsules,0,PLACEHOLDER - not in the Operations table; confirm
+Schaefer,8000,capsules,1,Operations 2026-09
 Pakrapid,3500,packets,1,Operations 2026-09 - rapid pack
 Tablet press,141000,tablets,1,Operations 2026-09 - Fette
 Chilsinator,,kg,0,Granulation - not on file; Operations to supply

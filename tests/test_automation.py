@@ -273,16 +273,19 @@ class TestPricing:
     def test_price_follows_the_target_margin(self, reference):
         result = run_pipeline(quote(count_per_bottle=60, servings_per_bottle=30),
                               reference, as_of=AS_OF)
-        cost = result.summary.primary_per_bottle
         for item in result.pricing:
             margin = item.target_margin_pct / 100.0
-            assert item.price_per_bottle == pytest.approx(cost / (1 - margin))
-            assert item.margin_dollars == pytest.approx(item.price_per_bottle - cost)
+            assert item.price_per_bottle == pytest.approx(
+                item.cost_per_bottle / (1 - margin))
+            assert item.margin_dollars == pytest.approx(
+                item.price_per_bottle - item.cost_per_bottle)
 
-    def test_both_channels_are_offered(self, reference):
+    def test_an_unnamed_customer_gets_the_standard_terms(self, reference):
         result = run_pipeline(quote(count_per_bottle=60, servings_per_bottle=30),
                               reference, as_of=AS_OF)
-        assert {item.channel for item in result.pricing} == {"contract", "b2c"}
+        assert {item.rule for item in result.pricing} == {"default"}
+        assert {item.cost_basis for item in result.pricing} == {
+            "including overhead", "excluding overhead"}
 
     def test_pricing_says_so_when_cost_is_understated(self, reference):
         parsed = quote(count_per_bottle=60, servings_per_bottle=30)

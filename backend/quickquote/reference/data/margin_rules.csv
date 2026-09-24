@@ -1,0 +1,5 @@
+rule,customer_match,min_margin_incl_oh_pct,min_margin_excl_oh_pct,confirmed,notes
+walmart,walmart,30,,1,Finance 2026-09 - 30% or more with overhead
+costco,costco,30,,1,Finance 2026-09 - 30% or more with overhead
+natures_lab,nature's lab;natures lab;nature lab,65,,1,Finance 2026-09
+default,,20,30,1,"Finance 2026-09 - every other account: 20% including overhead and 30% excluding it"

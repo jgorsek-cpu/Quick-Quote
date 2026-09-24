@@ -247,14 +247,17 @@ class TestRoundTrip:
 
     def test_a_margin_target_reaches_the_engine(self, worksheet, data_dir):
         book = load_workbook(worksheet)
-        book[PRICING_SHEET].cell(row=2, column=3).value = 32.5
+        sheet = book[PRICING_SHEET]
+        header = [cell.value for cell in sheet[1]]
+        rule = sheet.cell(row=2, column=1).value
+        sheet.cell(row=2, column=header.index("Min margin % incl. overhead *") + 1).value = 32.5
         book.save(worksheet)
 
         assert apply(worksheet, data_dir)["margins"] == 1
-        pricing = load_reference_data(data_dir).pricing
-        contract = next(item for item in pricing if item.channel == "contract")
-        assert contract.target_margin_pct == 32.5
-        assert "Confirmed by Finance" in contract.notes
+        rules = load_reference_data(data_dir).margin_rules
+        changed = next(item for item in rules if item.rule == rule)
+        assert changed.min_margin_incl_oh_pct == 32.5
+        assert changed.confirmed and "Confirmed by Finance" in changed.notes
 
     def test_a_blank_cell_never_clears_a_curated_value(self, worksheet, data_dir):
         before = (data_dir / "ingredient_identity.csv").read_text()

@@ -29,6 +29,9 @@ PO_DATE_HEADERS = ("purchase order date", "po date", "order date", "date")
 PO_PART_HEADERS = ("part number", "part", "item", "part no")
 PO_QTY_HEADERS = ("order qty", "qty", "quantity", "order quantity")
 PO_COST_HEADERS = ("unit cost", "cost", "unit price", "price")
+PO_DESC_HEADERS = ("description", "desc", "item description")
+PO_VENDOR_HEADERS = ("vendor name", "vendor", "supplier name", "supplier")
+PO_NUMBER_HEADERS = ("purchase order number", "po number", "po no", "order number")
 
 MASTER_PART_HEADERS = ("part", "part number", "item")
 MASTER_DESC_HEADERS = ("description", "desc", "itmdesc", "item description")
@@ -53,6 +56,8 @@ class IngestReport:
     parts_out: int = 0
     parts_without_description: list[str] = field(default_factory=list)
     descriptions_repaired: int = 0
+    descriptions_from_po: int = 0
+    vendors_present: bool = False
     warnings: list[str] = field(default_factory=list)
 
     def render(self) -> str:
@@ -67,7 +72,11 @@ class IngestReport:
             f"  Subtotal rows skipped: {self.subtotal_rows_skipped:,}",
             f"  Unusable rows skipped: {self.unparsable_rows_skipped:,}",
             f"  Parts written:         {self.parts_out:,}",
-            f"  Parts with no description in the item master: "
+            f"  Vendors:               "
+            f"{'read from the PO export' if self.vendors_present else 'no vendor column'}",
+            f"  Descriptions from PO:  {self.descriptions_from_po:,} "
+            f"(not in the item master)",
+            f"  Parts still with no description: "
             f"{len(self.parts_without_description):,}",
         ]
         if self.parts_without_description[:10]:
@@ -253,7 +262,19 @@ def load_item_master(
     return master
 
 
-def read_po_transactions(paths: list[Path], report: IngestReport) -> dict[str, list[tuple]]:
+@dataclass(frozen=True)
+class PoTransaction:
+    """One purchase-order line, as the export gives it."""
+
+    when: date | None
+    unit_cost: float
+    qty: float | None
+    description: str = ""
+    vendor: str = ""
+    order_number: str = ""
+
+
+def read_po_transactions(paths: list[Path], report: IngestReport) -> dict[str, list[PoTransaction]]:
     """Read transaction-level PO exports, grouped by part number."""
     grouped: dict[str, list[tuple]] = defaultdict(list)
 
@@ -270,6 +291,11 @@ def read_po_transactions(paths: list[Path], report: IngestReport) -> dict[str, l
         part_col = _find(headers, PO_PART_HEADERS)
         qty_col = _find(headers, PO_QTY_HEADERS)
         cost_col = _find(headers, PO_COST_HEADERS)
+        desc_col = _find(headers, PO_DESC_HEADERS)
+        # "Vendor name" is preferred over the vendor code, so a flag names a
+        # supplier a person recognises rather than three letters.
+        vendor_col = _find(headers, PO_VENDOR_HEADERS)
+        order_col = _find(headers, PO_NUMBER_HEADERS)
         if part_col is None or cost_col is None:
             report.warnings.append(
                 f"{path.name}: needs at least a part number and a unit cost column."
@@ -298,8 +324,18 @@ def read_po_transactions(paths: list[Path], report: IngestReport) -> dict[str, l
                 report.subtotal_rows_skipped += 1
                 continue
 
+            description = repair_mojibake(str(cell(desc_col) or "").strip())
+            vendor = str(cell(vendor_col) or "").strip()
+            order = str(cell(order_col) or "").strip()
             grouped[part].append(
-                (_to_date(cell(date_col)), cost, _to_float(cell(qty_col)))
+                PoTransaction(
+                    when=_to_date(cell(date_col)),
+                    unit_cost=cost,
+                    qty=_to_float(cell(qty_col)),
+                    description=description,
+                    vendor=vendor,
+                    order_number=order,
+                )
             )
             report.transactions_read += 1
 
@@ -307,23 +343,42 @@ def read_po_transactions(paths: list[Path], report: IngestReport) -> dict[str, l
 
 
 def aggregate(
-    grouped: dict[str, list[tuple]], master: dict[str, dict], report: IngestReport
+    grouped: dict[str, list[PoTransaction]], master: dict[str, dict], report: IngestReport
 ) -> list[dict]:
     """Collapse transactions into one PO-history row per part."""
     rows: list[dict] = []
+    saw_vendor = False
 
     for part, transactions in sorted(grouped.items()):
-        costs = [cost for _, cost, _ in transactions]
-        total_qty = sum(qty for _, _, qty in transactions if qty)
-        total_spend = sum(cost * qty for _, cost, qty in transactions if qty)
-        dated = [(when, cost) for when, cost, _ in transactions if when is not None]
-        dated.sort(key=lambda item: item[0])
+        costs = [line.unit_cost for line in transactions]
+        total_qty = sum(line.qty for line in transactions if line.qty)
+        total_spend = sum(line.unit_cost * line.qty for line in transactions if line.qty)
+        dated = [line for line in transactions if line.when is not None]
+        dated.sort(key=lambda line: line.when)
 
-        latest_date = dated[-1][0] if dated else None
-        latest_cost = dated[-1][1] if dated else costs[-1]
+        latest = dated[-1] if dated else transactions[-1]
+        latest_date = latest.when
+
+        # Vendors, most recent first, so the latest is the one a buyer would
+        # call. A part bought from one supplier only is worth knowing about.
+        vendors = [line.vendor for line in reversed(dated) if line.vendor]
+        vendors += [line.vendor for line in transactions
+                    if line.vendor and line.when is None]
+        unique_vendors = list(dict.fromkeys(vendors))
+        if unique_vendors:
+            saw_vendor = True
 
         info = master.get(part, {})
         description = info.get("description", "")
+        if not description:
+            # The full PO export carries descriptions too, so a part missing
+            # from the item master is no longer nameless.
+            description = next(
+                (line.description for line in reversed(dated) if line.description),
+                next((line.description for line in transactions if line.description), ""),
+            )
+            if description:
+                report.descriptions_from_po += 1
         if not description:
             report.parts_without_description.append(part)
 
@@ -335,12 +390,12 @@ def aggregate(
             "part_number": part,
             "description": description,
             "uom": uom,
-            "latest_unit_cost": f"{latest_cost:.6g}",
+            "latest_unit_cost": f"{latest.unit_cost:.6g}",
             "min_unit_cost_ever": f"{min(costs):.6g}",
             "max_unit_cost_ever": f"{max(costs):.6g}",
             "latest_po_date": latest_date.isoformat() if latest_date else "",
-            "latest_vendor": "",           # not present in the PO export
-            "unique_vendor_count": "",     # not present in the PO export
+            "latest_vendor": unique_vendors[0] if unique_vendors else "",
+            "unique_vendor_count": str(len(unique_vendors)) if unique_vendors else "",
             "po_count": str(len(transactions)),
             # Spend ranks the curation queue: a handful of parts carry most of
             # it, so R&D need not confirm a thousand rows to quote accurately.
@@ -349,7 +404,8 @@ def aggregate(
         })
 
     report.parts_out = len(rows)
-    if rows:
+    report.vendors_present = saw_vendor
+    if rows and not saw_vendor:
         report.warnings.append(
             "The PO exports carry no vendor column, so vendor and vendor count are "
             "left blank. Single-supplier flags stay silent rather than firing on "

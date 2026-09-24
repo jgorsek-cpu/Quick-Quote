@@ -33,3 +33,5 @@ dispensing_seconds_per_20kg,10,seconds,Operations 2026-09 - dispensing time per 
 compounding_variance_flag_pct,25.0,percent,Gap between the component-count bands and Operations' own timings that raises a flag
 dataset_label,Demonstration data,text,Names the reference set a quote was costed against
 dataset_is_demonstration,1,flag,1 = illustrative prices that are not DrVita's; every quote says so and is marked not-for-quoting
+low_margin_forms,tablet;powder;stick pack;packet;sachet,text,Dosage forms that may be quoted down to the floor margin - Finance 2026-09
+low_margin_floor_pct,20,percent,Floor these forms may go to for any account - Finance 2026-09

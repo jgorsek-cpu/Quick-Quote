@@ -518,19 +518,26 @@ def build_flags(
     # The recommended price is the number most likely to be acted on, and it
     # is only as good as the margin behind it. An unconfirmed target must not
     # produce a confident-looking price with nothing said about it.
-    placeholder = [target for target in reference.pricing
-                   if "PLACEHOLDER" in (target.notes or "").upper()]
-    if placeholder:
-        names = ", ".join(target.label for target in placeholder)
+    rule = reference.margin_rule_for(product.customer)
+    if rule is not None and not rule.confirmed:
         flags.append(
             Flag(
                 FINANCE,
                 "Margin targets",
-                f"Recommended prices for {names} use placeholder margins that "
-                "Finance has not confirmed. The cost below is the system's work; "
-                "the price is not. Set the targets in pricing.csv before anyone "
-                "quotes from them.",
+                f"The '{rule.rule}' margin rule has not been confirmed by Finance. "
+                "The cost below is the system's work; the price is not. Set the "
+                "requirement in margin_rules.csv before anyone quotes from it.",
                 "blocking",
+            )
+        )
+    elif rule is not None and rule.is_default and not product.customer:
+        flags.append(
+            Flag(
+                FINANCE,
+                "Margin targets",
+                "No customer on the quote, so the standard account terms were "
+                "applied. Named accounts have their own requirement - Walmart "
+                "and Costco are higher - so name the customer before pricing.",
             )
         )
 

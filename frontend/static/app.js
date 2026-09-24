@@ -548,17 +548,23 @@ function pricingCard(pricing, summary) {
   return el("div", {class: "card"},
     el("h3", {}, "Recommended price — for Sales and Finance review"),
     el("div", {class: "body"},
-      pricing.map((item) => el("div", {class: "price-card", style: "margin-bottom:10px"},
-        el("span", {}, item.label),
+      pricing.map((item) => el("div", {
+          class: item.binding ? "price-card binding" : "price-card",
+          style: "margin-bottom:10px",
+        },
+        el("span", {}, item.label + (item.binding ? " — binding" : "")),
         el("span", {class: "amount"}, money(item.price_per_bottle)),
         el("span", {class: "sub"},
-          `${item.target_margin_pct}% target margin · ${money(item.margin_dollars)}/bottle over cost`))),
+          `${item.target_margin_pct}% ${item.cost_basis} · on ${money(item.cost_per_bottle)} cost` +
+          (item.form_floor_applied ? " · relaxed by dosage form" : "")))),
       el("div", {class: "alert warn", style: "margin-bottom:0"},
         el("strong", {}, "Not a price. "),
-        "Margin targets are configured reference data, not a Finance decision. ",
+        pricing.length > 1
+          ? "This account is held to both requirements, so the binding one sets the price. "
+          : "",
         summary.excluded_count
           ? `Cost excludes ${summary.excluded_count} unresolved line(s), so these prices are understated.`
-          : "Confirm the targets before quoting.")));
+          : "Confirm with Finance before quoting.")));
 }
 
 function renderLivePanel(result) {

@@ -327,17 +327,37 @@ def export(reference: ReferenceData, destination: Path, limit: int | None = None
 
     # -- margins --------------------------------------------------------
     sheet = book.create_sheet(PRICING_SHEET)
-    header(sheet, ["Channel", "Label", "Target Margin % *", "Notes"])
-    for width, letter in zip([16, 30, 20, 60], "ABCD"):
+    header(sheet, ["Rule", "Customer names it matches",
+                   "Min margin % incl. overhead *", "Min margin % excl. overhead *",
+                   "Notes"])
+    for width, letter in zip([16, 34, 24, 24, 60], "ABCDE"):
         sheet.column_dimensions[letter].width = width
-    for index, target in enumerate(reference.pricing, start=2):
-        for column, value in enumerate(
-            [target.channel, target.label, target.target_margin_pct, target.notes], start=1
-        ):
+    for index, rule in enumerate(reference.margin_rules, start=2):
+        for column, value in enumerate([
+            rule.rule,
+            "; ".join(rule.customer_match) or "(every other account)",
+            rule.min_margin_incl_oh_pct,
+            rule.min_margin_excl_oh_pct,
+            rule.notes,
+        ], start=1):
             sheet.cell(row=index, column=column, value=value)
-        sheet.cell(row=index, column=3).fill = PatternFill("solid", fgColor=amber)
-    sheet.cell(row=len(reference.pricing) + 3, column=1,
-               value="Margin = (price - cost) / price. Finance owns these numbers.").font = Font(italic=True)
+        for column in (3, 4):
+            sheet.cell(row=index, column=column).fill = PatternFill("solid", fgColor=amber)
+
+    row = len(reference.margin_rules) + 3
+    forms = ", ".join(reference.low_margin_forms) or "none"
+    floor = reference.low_margin_floor_pct
+    for line in (
+        "Margin = (price - cost) / price. Finance owns these numbers.",
+        "An account held to both figures has to clear both: they are different "
+        "tests against different cost bases, and the tighter one sets the price.",
+        f"Any of these forms may be quoted down to {floor:g}% whichever account "
+        f"it is: {forms}. Set low_margin_forms and low_margin_floor_pct in "
+        "labor_rates.csv to change that."
+        if floor else f"No dosage-form floor is configured.",
+    ):
+        sheet.cell(row=row, column=1, value=line).font = Font(italic=True)
+        row += 1
 
     # -- the hidden list the overage dropdown reads ---------------------
     lookup = book.create_sheet(LOOKUP_SHEET)
@@ -525,15 +545,22 @@ def apply(worksheet: Path, data_dir: Path) -> dict:
                cleaning.values())
 
     if PRICING_SHEET in book.sheetnames:
-        path = data_dir / "pricing.csv"
-        pricing = {row["channel"]: row for row in csv.DictReader(path.open())}
+        path = data_dir / "margin_rules.csv"
+        rules = {row["rule"]: row for row in csv.DictReader(path.open())}
         for row in book[PRICING_SHEET].iter_rows(min_row=2, values_only=True):
-            channel = (row[0] or "").strip().lower()
-            if channel in pricing and _changed(row[2], pricing[channel].get("target_margin_pct")):
-                pricing[channel]["target_margin_pct"] = f"{float(row[2]):g}"
-                pricing[channel]["notes"] = "Confirmed by Finance"
-                changed["margins"] += 1
-        _write(path, ["channel", "target_margin_pct", "label", "notes"], pricing.values())
+            name = (row[0] or "").strip().lower()
+            if name not in rules:
+                continue
+            for index, column in ((2, "min_margin_incl_oh_pct"),
+                                  (3, "min_margin_excl_oh_pct")):
+                value = _as_number(row[index] if index < len(row) else None)
+                if _changed(value, rules[name].get(column)):
+                    rules[name][column] = f"{value:g}"
+                    rules[name]["confirmed"] = "1"
+                    rules[name]["notes"] = "Confirmed by Finance"
+                    changed["margins"] += 1
+        _write(path, ["rule", "customer_match", "min_margin_incl_oh_pct",
+                      "min_margin_excl_oh_pct", "confirmed", "notes"], rules.values())
 
     return changed
 

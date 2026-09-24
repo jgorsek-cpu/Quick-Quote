@@ -228,17 +228,20 @@ def build_quote_pdf(result: QuoteResult) -> bytes:
     if result.pricing:
         story.append(Paragraph("Recommended price", style["h2"]))
         story.append(_grid(
-            ["Channel", "Target margin", "Price/bottle", "Margin/bottle"],
-            [[item.label, f"{item.target_margin_pct:g}%",
+            ["Requirement", "Margin", "On cost", "Price/bottle", "Margin/bottle"],
+            [[item.label + (" (binding)" if item.binding else ""),
+              f"{item.target_margin_pct:g}% {item.cost_basis.split()[0]} OH",
+              f"${item.cost_per_bottle:,.2f}",
               f"${item.price_per_bottle:,.2f}", f"${item.margin_dollars:,.2f}"]
              for item in result.pricing],
-            [2.6 * inch, 1.3 * inch, 1.3 * inch, 1.3 * inch],
+            [2.1 * inch, 1.5 * inch, 1.0 * inch, 1.1 * inch, 1.1 * inch],
         ))
         story.append(Spacer(1, 6))
         story.append(_banner(
-            "<b>These are recommendations, not prices.</b> Margin targets are configured "
-            "reference data, not a Finance decision. Quick Quote does not set final "
-            "pricing, margin or customer-facing terms.",
+            "<b>These are recommendations, not prices.</b> Where an account is held to "
+            "more than one requirement the price has to clear all of them, so the "
+            "binding row sets it. Quick Quote does not set final pricing, margin or "
+            "customer-facing terms.",
             RED, style["banner"],
         ))
 

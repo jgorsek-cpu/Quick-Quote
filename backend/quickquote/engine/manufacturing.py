@@ -234,6 +234,20 @@ def _cost_step(
     result.setup_hours = setup * context.batches if setup else None
     result.hours = run_hours + (result.setup_hours or 0.0)
     result.cost_per_bottle = result.hours * rate / context.bottles
+
+    # Split the hour into the crew's wages and the machine's overhead, which
+    # is what lets a margin be quoted on a cost basis that excludes overhead.
+    centre = reference.work_centres.get(work_centre)
+    if centre is not None and reference.use_work_centre_rates:
+        crew_size = crew if crew is not None else (centre.crew_size or 1)
+        labor_rate = centre.labor_rate_per_hour * crew_size
+    elif centre is not None:
+        labor_rate = reference.labor_rate
+    else:
+        labor_rate = None
+    if labor_rate is not None:
+        result.labor_per_bottle = result.hours * labor_rate / context.bottles
+        result.overhead_per_bottle = result.cost_per_bottle - result.labor_per_bottle
     return result
 
 

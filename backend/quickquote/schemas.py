@@ -205,6 +205,10 @@ class ManufacturingStep:
     crew_size: int | None = None
     rate_per_hour: float | None = None
     cost_per_bottle: float | None = None
+    # Split out because margin is quoted on two cost bases: one that carries
+    # allocated overhead and one that does not.
+    labor_per_bottle: float | None = None
+    overhead_per_bottle: float | None = None
     reason: str = ""
 
     def to_dict(self) -> dict[str, Any]:
@@ -269,9 +273,16 @@ class CostSummary:
     raw_materials: float = 0.0
     packaging: float = 0.0
     manufacturing: float = 0.0
+    # Manufacturing split into direct labor and allocated overhead, so a
+    # margin quoted "excluding overhead" has a cost basis to sit on.
+    manufacturing_labor: float = 0.0
+    manufacturing_overhead: float = 0.0
     testing: float = 0.0
     testing_basis: str = ""
     primary_per_bottle: float = 0.0
+    # Everything but allocated manufacturing overhead. Materials, packaging
+    # and analytical testing are purchases, so they carry none.
+    cost_excluding_overhead: float = 0.0
     low_per_bottle: float = 0.0
     high_per_bottle: float = 0.0
     quote_confidence: str = ""
@@ -307,7 +318,12 @@ class PriceBreak:
 
 @dataclass
 class PriceRecommendation:
-    """A suggested price for one channel. Requires Finance review."""
+    """The price one margin requirement asks for. Requires Finance review.
+
+    A customer can be held to more than one requirement at once -- the default
+    account terms are 20% including overhead *and* 30% excluding it -- so one
+    of these is produced per test and the tightest is marked ``binding``.
+    """
 
     channel: str
     label: str
@@ -315,6 +331,13 @@ class PriceRecommendation:
     price_per_bottle: float
     margin_dollars: float
     basis: str
+    # Which cost the margin is taken against: "including overhead" or
+    # "excluding overhead".
+    cost_basis: str = "including overhead"
+    cost_per_bottle: float = 0.0
+    rule: str = ""
+    binding: bool = False
+    form_floor_applied: bool = False
     notes: str = ""
 
     def to_dict(self) -> dict[str, Any]:

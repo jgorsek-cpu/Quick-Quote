@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Iterable
 
 from ..config import REFERENCE_DATA_DIR
+from ..engine.text import contains_word, spaced
 
 
 def _to_float(value: str | None, default: float | None = None) -> float | None:
@@ -299,13 +300,41 @@ class CapsuleFit:
 
 
 @dataclass(frozen=True)
-class PricingTarget:
-    """A channel's target margin. Margin = (price - cost) / price."""
+class MarginRule:
+    """The margin an account has to clear, and on which cost.
 
-    channel: str
-    target_margin_pct: float
-    label: str
+    An account can be held to two requirements at once: the default terms are
+    20% including overhead *and* 30% excluding it, which are different tests
+    against different cost bases, so both are carried and the tighter one is
+    what a price has to satisfy.
+    """
+
+    rule: str
+    customer_match: tuple[str, ...] = ()
+    min_margin_incl_oh_pct: float | None = None
+    min_margin_excl_oh_pct: float | None = None
+    confirmed: bool = False
     notes: str = ""
+
+    @property
+    def is_default(self) -> bool:
+        return not self.customer_match
+
+    def matches(self, customer: str | None) -> bool:
+        """True when this rule names the customer on the quote.
+
+        Matching is on containment of the whole name, so "Costco Wholesale"
+        and "COSTCO #1234" both reach the Costco rule while a customer merely
+        containing the letters does not.
+        """
+        if not customer or self.is_default:
+            return False
+        # Both sides are normalised the same way, so an apostrophe in
+        # "Nature's Lab" does not decide whether the rule applies.
+        haystack = spaced(customer)
+        return any(
+            contains_word(haystack, spaced(needle)) for needle in self.customer_match
+        )
 
 
 @dataclass(frozen=True)
@@ -364,7 +393,7 @@ class ReferenceData:
     testing_bands: list[TestingBand] = field(default_factory=list)
     bulk_density: dict[str, float] = field(default_factory=dict)
     measured_density: dict[str, MeasuredDensity] = field(default_factory=dict)
-    pricing: list[PricingTarget] = field(default_factory=list)
+    margin_rules: list[MarginRule] = field(default_factory=list)
     source_dir: Path = REFERENCE_DATA_DIR
     # Populated on first use by the matching engine: canonical identity ->
     # the PO rows that resolve to it. Resolving every row against every alias
@@ -636,6 +665,47 @@ class ReferenceData:
         if blend_kg and per_20kg:
             minutes += (blend_kg / 20.0) * per_20kg / 60.0
         return minutes / 60.0
+
+    # -- margin -------------------------------------------------------
+    def margin_rule_for(self, customer: str | None) -> MarginRule | None:
+        """The rule this customer falls under, or the default.
+
+        A named account wins over the default; where two named rules could
+        both match, the one naming the longer phrase does, so a rule for
+        "nature's lab" is not beaten by a shorter needle.
+        """
+        named = [rule for rule in self.margin_rules if rule.matches(customer)]
+        if named:
+            return max(
+                named,
+                key=lambda rule: max(len(spaced(needle)) for needle in rule.customer_match),
+            )
+        return next((rule for rule in self.margin_rules if rule.is_default), None)
+
+    @property
+    def low_margin_forms(self) -> tuple[str, ...]:
+        """Dosage forms Finance allow down to the floor margin."""
+        raw = self.text_rate("low_margin_forms", "")
+        return tuple(part.strip().lower() for part in raw.split(";") if part.strip())
+
+    @property
+    def low_margin_floor_pct(self) -> float | None:
+        value = self.rate("low_margin_floor_pct", 0.0)
+        return value or None
+
+    def form_allows_floor(self, dosage_form: str | None) -> str | None:
+        """The listed form this product is, or ``None``.
+
+        A stick pack is a packet by another name, and both are listed, so the
+        match is on the form's own words rather than on an exact token.
+        """
+        if not dosage_form:
+            return None
+        haystack = spaced(dosage_form)
+        for form in self.low_margin_forms:
+            if contains_word(haystack, form) or spaced(form) in haystack:
+                return form
+        return None
 
     # -- provenance ---------------------------------------------------
     @property
@@ -1100,18 +1170,25 @@ def load_reference_data(directory: Path | None = None) -> ReferenceData:
         if key and density and density > 0:
             data.bulk_density[key] = density
 
-    for row in _read_csv(base / "pricing.csv"):
-        channel = (row.get("channel") or "").strip().lower()
-        margin = _to_float(row.get("target_margin_pct"))
-        if channel and margin is not None:
-            data.pricing.append(
-                PricingTarget(
-                    channel=channel,
-                    target_margin_pct=margin,
-                    label=(row.get("label") or channel.title()).strip(),
-                    notes=row.get("notes", ""),
-                )
+    for row in _read_csv(base / "margin_rules.csv"):
+        name = (row.get("rule") or "").strip().lower()
+        if not name:
+            continue
+        match = tuple(
+            part.strip().lower()
+            for part in (row.get("customer_match") or "").split(";")
+            if part.strip()
+        )
+        data.margin_rules.append(
+            MarginRule(
+                rule=name,
+                customer_match=match,
+                min_margin_incl_oh_pct=_to_float(row.get("min_margin_incl_oh_pct")),
+                min_margin_excl_oh_pct=_to_float(row.get("min_margin_excl_oh_pct")),
+                confirmed=(row.get("confirmed") or "").strip() == "1",
+                notes=row.get("notes", ""),
             )
+        )
 
     for row in _read_csv(base / "potency.csv"):
         # R&D key their sheet on the part code; the table this replaced used

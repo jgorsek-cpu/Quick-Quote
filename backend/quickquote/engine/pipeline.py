@@ -224,7 +224,9 @@ def run_pipeline(
         dataset_label=reference.dataset_label,
         dataset_is_demonstration=reference.is_demonstration,
     )
-    result.pricing = build_pricing(summary, reference)
+    result.pricing = build_pricing(
+        summary, reference, product.customer, product.dosage_form
+    )
     if with_price_breaks:
         result.price_breaks = build_price_breaks(parsed, reference, as_of)
     return result
@@ -306,43 +308,90 @@ def build_price_breaks(
 
 # ---------------------------------------------------------- pricing
 
-def build_pricing(summary: CostSummary, reference: ReferenceData) -> list[PriceRecommendation]:
-    """Suggest a price per channel from its target margin.
+def build_pricing(
+    summary: CostSummary,
+    reference: ReferenceData,
+    customer: str | None = None,
+    dosage_form: str | None = None,
+) -> list[PriceRecommendation]:
+    """The price each margin requirement on this account asks for.
 
     ``margin = (price - cost) / price``, so ``price = cost / (1 - margin)``.
-    These are recommendations for Sales and Finance to review. The system
-    does not set final pricing, margin or customer-facing terms.
+    An account can face two requirements at once -- the default terms are 20%
+    including overhead and 30% excluding it -- and they are different tests
+    against different cost bases, so one recommendation is produced per test
+    and the tightest is marked binding. Finance own these numbers; the system
+    reports what the rules ask for and does not set final pricing or terms.
     """
-    cost = summary.primary_per_bottle
-    if cost <= 0:
+    rule = reference.margin_rule_for(customer)
+    cost_incl = summary.primary_per_bottle
+    if rule is None or cost_incl <= 0:
         return []
 
+    # Tablets, powders and stick packs may be quoted down to the floor,
+    # whichever account it is. The floor only ever relaxes a requirement.
+    floor = reference.low_margin_floor_pct
+    matched_form = reference.form_allows_floor(dosage_form)
+    relaxed = bool(matched_form and floor is not None)
+
+    cost_excl = summary.cost_excluding_overhead or cost_incl
+    tests = (
+        ("including overhead", rule.min_margin_incl_oh_pct, cost_incl),
+        ("excluding overhead", rule.min_margin_excl_oh_pct, cost_excl),
+    )
+
     recommendations: list[PriceRecommendation] = []
-    for target in reference.pricing:
-        margin = target.target_margin_pct / 100.0
+    for basis_label, required, cost in tests:
+        if required is None:
+            continue
+        applied = required
+        if relaxed and floor < required:
+            applied = floor
+        margin = applied / 100.0
         if margin >= 1.0:
             continue
         price = cost / (1 - margin)
+
         basis = (
-            f"{target.target_margin_pct:g}% target margin on a "
-            f"${cost:,.4f}/bottle cost"
+            f"{applied:g}% margin on a ${cost:,.4f}/bottle cost "
+            f"{basis_label}"
         )
+        if relaxed and applied != required:
+            basis += (
+                f"; relaxed from {required:g}% because a {matched_form} may be "
+                f"quoted down to {floor:g}%"
+            )
         if summary.excluded_count:
             basis += (
                 f"; cost excludes {summary.excluded_count} unresolved line(s), "
                 "so this price is understated"
             )
+
+        label = (
+            f"{rule.rule.replace('_', ' ').title()} terms"
+            if not rule.is_default else "Standard account terms"
+        )
         recommendations.append(
             PriceRecommendation(
-                channel=target.channel,
-                label=target.label,
-                target_margin_pct=target.target_margin_pct,
+                channel=rule.rule,
+                label=label,
+                target_margin_pct=applied,
                 price_per_bottle=price,
                 margin_dollars=price - cost,
                 basis=basis,
-                notes=target.notes,
+                cost_basis=basis_label,
+                cost_per_bottle=cost,
+                rule=rule.rule,
+                form_floor_applied=relaxed and applied != required,
+                notes=rule.notes,
             )
         )
+
+    # Where an account faces more than one test, the price has to satisfy all
+    # of them, so the highest is the one that actually binds.
+    if recommendations:
+        highest = max(recommendations, key=lambda item: item.price_per_bottle)
+        highest.binding = True
     return recommendations
 
 
@@ -364,10 +413,22 @@ def _summarise(
         line.cost_per_bottle or 0.0 for line in packaging if line.match.accepted
     )
     summary.manufacturing = manufacturing.total_per_bottle if manufacturing.estimated else 0.0
+    if manufacturing.estimated:
+        summary.manufacturing_labor = sum(
+            step.labor_per_bottle or 0.0 for step in manufacturing.steps
+        )
+        summary.manufacturing_overhead = sum(
+            step.overhead_per_bottle or 0.0 for step in manufacturing.steps
+        )
     summary.testing = manufacturing.testing_per_bottle or 0.0
     summary.testing_basis = manufacturing.testing_basis
     summary.primary_per_bottle = (
         summary.raw_materials + summary.packaging + summary.manufacturing + summary.testing
+    )
+    # Materials, packaging and analytical testing are purchases and carry no
+    # allocated overhead, so the only thing to strip is the manufacturing share.
+    summary.cost_excluding_overhead = (
+        summary.primary_per_bottle - summary.manufacturing_overhead
     )
 
     # Every cost-bearing line carries the same +/-10% band, so summing the

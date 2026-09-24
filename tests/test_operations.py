@@ -24,7 +24,9 @@ def spec(form="Capsule", **kwargs):
     return ProductSpec(**defaults)
 
 
-def quote(form="Capsule", lines=None, **kwargs):
+def quote(form="Capsule", lines=None, customer=None, **kwargs):
+    if customer is not None:
+        kwargs["customer"] = customer
     return ParsedQuote(
         product=spec(form, **kwargs),
         formula=lines or [FormulaLine("Ashwagandha Powder", 500.0)],
@@ -89,13 +91,23 @@ class TestSetUpTime:
         assert cleaning and all(step.setup_hours is None for step in cleaning)
 
     def test_a_missing_set_up_time_understates_rather_than_blocks(self, reference):
-        """Schaefer has no set up time on file, but small runs still quote."""
-        estimate, _ = estimate_manufacturing(spec(annual_volume_bottles=500), 7, reference)
+        """One missing figure must not make a step that runs unquotable."""
+        catalogue = copy.deepcopy(reference)
+        catalogue.machines = [
+            type(machine)(**{**machine.__dict__, "setup_hours": None})
+            for machine in catalogue.machines
+        ]
+        estimate, _ = estimate_manufacturing(spec(annual_volume_bottles=500), 7, catalogue)
         assert estimate.machine == "Schaefer"
         assert estimate.estimated
         encapsulation = next(step for step in estimate.steps if step.step == "Encapsulation")
         assert encapsulation.setup_hours is None
         assert encapsulation.cost_per_bottle is not None
+
+    def test_every_encapsulator_now_has_one(self, reference):
+        """Operations closed the last gap in September 2026."""
+        assert all(machine.setup_hours and machine.cleaning_hours
+                   for machine in reference.machines)
 
 
 class TestCleaning:
@@ -210,7 +222,7 @@ class TestFormsOperationsUnblocked:
 
 class TestConfirmedRates:
     @pytest.mark.parametrize("centre,speed", [
-        ("705", 32000), ("1505", 75000), ("3005", 110000),
+        ("Schaefer", 8000), ("705", 32000), ("1505", 75000), ("3005", 110000),
         ("Tablet press", 141000), ("Powder Fill", 1200), ("Pakrapid", 3500),
     ])
     def test_operations_speeds_are_on_file_and_marked_confirmed(
@@ -219,11 +231,15 @@ class TestConfirmedRates:
         rate = reference.run_rates[centre]
         assert rate.units_per_hour == speed and rate.confirmed
 
-    @pytest.mark.parametrize("centre", ["Schaefer", "Chilsinator"])
-    def test_a_rate_operations_did_not_supply_is_not_marked_confirmed(
-        self, reference, centre
-    ):
-        assert not reference.run_rates[centre].confirmed
+    def test_a_rate_operations_did_not_supply_is_not_marked_confirmed(self, reference):
+        """Granulation is the one throughput still missing."""
+        unconfirmed = [name for name, rate in reference.run_rates.items()
+                       if not rate.confirmed]
+        assert unconfirmed == ["Chilsinator"]
+
+    def test_the_schaefer_rate_arrived(self, reference):
+        rate = reference.run_rates["Schaefer"]
+        assert rate.units_per_hour == 8000 and rate.confirmed
 
     def test_the_encapsulation_bands_match_what_operations_confirmed(self, reference):
         bands = {m.machine: (m.min_capsules, m.max_capsules) for m in reference.machines}
@@ -299,21 +315,120 @@ class TestDatasetProvenance:
                script.index("dataset_is_demonstration")
 
 
+class TestMarginRules:
+    """Finance's requirements: by account, on two cost bases, with a form floor."""
+
+    @pytest.mark.parametrize("customer,rule", [
+        ("Costco Wholesale", "costco"),
+        ("WALMART STORES INC", "walmart"),
+        ("Nature's Lab", "natures_lab"),
+        ("Natures Lab LLC", "natures_lab"),
+        ("Vitamin Shoppe", "default"),
+        (None, "default"),
+    ])
+    def test_the_account_decides_the_rule(self, reference, customer, rule):
+        assert reference.margin_rule_for(customer).rule == rule
+
+    def test_a_near_miss_does_not_match(self, reference):
+        """"Costa Coffee" is not Costco."""
+        assert reference.margin_rule_for("Costa Coffee").rule == "default"
+
+    def test_costco_and_walmart_are_held_higher_than_the_rest(self, reference):
+        costco = reference.margin_rule_for("Costco Wholesale")
+        standard = reference.margin_rule_for("Vitamin Shoppe")
+        assert costco.min_margin_incl_oh_pct == 30.0
+        assert standard.min_margin_incl_oh_pct == 20.0
+
+    def test_the_standard_terms_carry_two_tests(self, reference):
+        standard = reference.margin_rule_for("Vitamin Shoppe")
+        assert standard.min_margin_incl_oh_pct == 20.0
+        assert standard.min_margin_excl_oh_pct == 30.0
+
+    def test_both_tests_produce_a_price_and_one_binds(self, reference):
+        result = run_pipeline(quote(customer="Vitamin Shoppe"), reference, as_of=AS_OF)
+        assert len(result.pricing) == 2
+        binding = [item for item in result.pricing if item.binding]
+        assert len(binding) == 1
+        assert binding[0].price_per_bottle == max(
+            item.price_per_bottle for item in result.pricing)
+
+    def test_the_excluding_overhead_price_uses_the_smaller_cost(self, reference):
+        result = run_pipeline(quote(customer="Vitamin Shoppe"), reference, as_of=AS_OF)
+        excl = next(i for i in result.pricing if i.cost_basis == "excluding overhead")
+        incl = next(i for i in result.pricing if i.cost_basis == "including overhead")
+        assert excl.cost_per_bottle < incl.cost_per_bottle
+        assert incl.cost_per_bottle == pytest.approx(result.summary.primary_per_bottle)
+        assert excl.cost_per_bottle == pytest.approx(
+            result.summary.cost_excluding_overhead)
+
+    def test_overhead_is_what_separates_the_two_bases(self, reference):
+        result = run_pipeline(quote(customer="Vitamin Shoppe"), reference, as_of=AS_OF)
+        summary = result.summary
+        assert summary.manufacturing == pytest.approx(
+            summary.manufacturing_labor + summary.manufacturing_overhead)
+        assert summary.cost_excluding_overhead == pytest.approx(
+            summary.primary_per_bottle - summary.manufacturing_overhead)
+
+    def test_a_named_account_is_priced_higher(self, reference):
+        cheap = run_pipeline(quote(customer="Vitamin Shoppe"), reference, as_of=AS_OF)
+        rich = run_pipeline(quote(customer="Nature's Lab"), reference, as_of=AS_OF)
+        assert max(i.price_per_bottle for i in rich.pricing) > \
+               max(i.price_per_bottle for i in cheap.pricing)
+
+
+class TestDosageFormFloor:
+    """A tablet, powder or stick pack may go to 20% whichever account it is."""
+
+    @pytest.mark.parametrize("form,expected", [
+        ("Tablet", "tablet"), ("Chewable Tablet", "tablet"),
+        ("Powder", "powder"), ("Stick Pack", "stick pack"),
+        ("Capsule", None), ("Softgel", None), ("Gummy", None),
+    ])
+    def test_which_forms_qualify(self, reference, form, expected):
+        assert reference.form_allows_floor(form) == expected
+
+    def test_it_relaxes_a_named_account(self, reference):
+        capsule = run_pipeline(quote(customer="Costco Wholesale"), reference, as_of=AS_OF)
+        powder = run_pipeline(quote(customer="Costco Wholesale", form="Powder"),
+                              reference, as_of=AS_OF)
+        assert [i.target_margin_pct for i in capsule.pricing] == [30.0]
+        assert [i.target_margin_pct for i in powder.pricing] == [20.0]
+        assert powder.pricing[0].form_floor_applied
+        assert "relaxed from 30%" in powder.pricing[0].basis
+
+    def test_it_never_tightens_a_requirement(self, reference):
+        """The standard terms are already at the floor; the form changes nothing."""
+        result = run_pipeline(quote(customer="Vitamin Shoppe", form="Powder"),
+                              reference, as_of=AS_OF)
+        incl = next(i for i in result.pricing if i.cost_basis == "including overhead")
+        assert incl.target_margin_pct == 20.0
+        assert not incl.form_floor_applied
+
+    def test_a_capsule_keeps_the_full_requirement(self, reference):
+        result = run_pipeline(quote(customer="Nature's Lab"), reference, as_of=AS_OF)
+        assert result.pricing[0].target_margin_pct == 65.0
+        assert not result.pricing[0].form_floor_applied
+
+
 class TestUnconfirmedMargins:
-    def test_a_placeholder_margin_is_flagged_to_finance(self, reference):
+    def test_an_unconfirmed_rule_is_flagged_to_finance(self, reference):
+        catalogue = copy.deepcopy(reference)
+        catalogue.margin_rules = [
+            type(rule)(**{**rule.__dict__, "confirmed": False})
+            for rule in catalogue.margin_rules
+        ]
+        result = run_pipeline(quote(customer="Costco Wholesale"), catalogue, as_of=AS_OF)
+        margin = [flag for flag in result.flags if flag.item == "Margin targets"]
+        assert margin and margin[0].severity == "blocking"
+
+    def test_a_confirmed_rule_raises_nothing(self, reference):
+        result = run_pipeline(quote(customer="Costco Wholesale"), reference, as_of=AS_OF)
+        assert not [flag for flag in result.flags if flag.item == "Margin targets"]
+
+    def test_a_quote_with_no_customer_says_which_terms_it_used(self, reference):
         result = run_pipeline(quote(), reference, as_of=AS_OF)
         margin = [flag for flag in result.flags if flag.item == "Margin targets"]
-        assert margin and margin[0].owner == "Finance"
-        assert margin[0].severity == "blocking"
-
-    def test_a_confirmed_margin_raises_nothing(self, reference):
-        catalogue = copy.deepcopy(reference)
-        catalogue.pricing = [
-            type(target)(**{**target.__dict__, "notes": "Confirmed by Finance 2026-09"})
-            for target in catalogue.pricing
-        ]
-        result = run_pipeline(quote(), catalogue, as_of=AS_OF)
-        assert not [flag for flag in result.flags if flag.item == "Margin targets"]
+        assert margin and "Walmart" in margin[0].reason
 
     def test_the_price_is_still_offered_with_the_caveat(self, reference):
         """Flagging it is not the same as withholding it."""
@@ -344,3 +459,96 @@ class TestDescriptionEncoding:
         from quickquote.reference.ingest import repair_mojibake
 
         assert repair_mojibake(text) == text
+
+
+class TestPoExportColumns:
+    """The full exports carry description, vendor and PO number."""
+
+    def _book(self, tmp_path, rows):
+        from openpyxl import Workbook
+
+        book = Workbook()
+        sheet = book.active
+        for row in rows:
+            sheet.append(list(row))
+        path = tmp_path / "po.xlsx"
+        book.save(path)
+        return path
+
+    HEADER = ("Purchase Order Date", "Part Number", "Description",
+              "Purchase Order Number", "Vendor", "Vendor Name", "Order Qty", "Unit Cost")
+
+    def test_vendors_are_read_and_counted(self, tmp_path):
+        from quickquote.reference.ingest import IngestReport, aggregate, read_po_transactions
+
+        path = self._book(tmp_path, [
+            self.HEADER,
+            ("2024-01-01", "RNMSM1", "MSM", "1", "FUL", "FULLER ENTERPRISE", 100, 10.0),
+            ("2025-01-01", "RNMSM1", "MSM", "2", "FUL", "FULLER ENTERPRISE", 100, 11.0),
+            ("2026-01-01", "RBASH6", "ASHWAGANDHA", "3", "SKP", "SHRI KARTIKEYA", 50, 20.0),
+            ("2025-06-01", "RBASH6", "ASHWAGANDHA", "4", "ASI", "A.S.I. INTERNATIONAL", 50, 22.0),
+        ])
+        report = IngestReport()
+        rows = {r["part_number"]: r
+                for r in aggregate(read_po_transactions([path], report), {}, report)}
+        assert report.vendors_present
+        assert rows["RNMSM1"]["unique_vendor_count"] == "1"
+        assert rows["RNMSM1"]["latest_vendor"] == "FULLER ENTERPRISE"
+        assert rows["RBASH6"]["unique_vendor_count"] == "2"
+        # Most recent PO first, so the vendor named is the one to call.
+        assert rows["RBASH6"]["latest_vendor"] == "SHRI KARTIKEYA"
+
+    def test_a_description_missing_from_the_master_comes_from_the_po(self, tmp_path):
+        from quickquote.reference.ingest import IngestReport, aggregate, read_po_transactions
+
+        path = self._book(tmp_path, [
+            self.HEADER,
+            ("2026-01-01", "RNEW1", "BRAND NEW MATERIAL", "9", "V", "VENDOR", 10, 5.0),
+        ])
+        report = IngestReport()
+        rows = aggregate(read_po_transactions([path], report), {}, report)
+        assert rows[0]["description"] == "BRAND NEW MATERIAL"
+        assert report.descriptions_from_po == 1
+        assert report.parts_without_description == []
+
+    def test_the_item_master_still_wins(self, tmp_path):
+        from quickquote.reference.ingest import IngestReport, aggregate, read_po_transactions
+
+        path = self._book(tmp_path, [
+            self.HEADER,
+            ("2026-01-01", "RNMSM1", "po spelling", "9", "V", "VENDOR", 10, 5.0),
+        ])
+        report = IngestReport()
+        master = {"RNMSM1": {"description": "master spelling", "uom": "KG"}}
+        rows = aggregate(read_po_transactions([path], report), master, report)
+        assert rows[0]["description"] == "master spelling"
+
+    def test_a_po_description_is_repaired_too(self, tmp_path):
+        from quickquote.reference.ingest import IngestReport, aggregate, read_po_transactions
+
+        path = self._book(tmp_path, [
+            self.HEADER,
+            ("2026-01-01", "RBASH6", "KSM-66« ASHWAGANDHA", "9", "V", "VENDOR", 10, 5.0),
+        ])
+        report = IngestReport()
+        rows = aggregate(read_po_transactions([path], report), {}, report)
+        assert rows[0]["description"] == "KSM-66® ASHWAGANDHA"
+
+    def test_a_single_supplier_part_reaches_purchasing(self, reference):
+        """The flag was already written; it was the vendor column that was missing."""
+        import copy as _copy
+        from datetime import date as _date
+        from quickquote.reference.loader import PoRow
+
+        catalogue = _copy.deepcopy(reference)
+        catalogue.identity_index = None
+        catalogue.po_rows = [
+            PoRow(part_number="RNMSM1", description="MSM", uom="KG",
+                  latest_unit_cost=11.0, min_unit_cost_ever=11.0, max_unit_cost_ever=11.0,
+                  latest_po_date=_date(2026, 8, 1), latest_vendor="FULLER ENTERPRISE",
+                  unique_vendor_count=1, po_count=7, total_spend=1000.0),
+        ]
+        result = run_pipeline(
+            quote(lines=[FormulaLine("MSM", 500.0)]), catalogue, as_of=AS_OF)
+        sole = [f for f in result.flags if "Single-supplier" in f.reason]
+        assert sole and "FULLER ENTERPRISE" in sole[0].reason

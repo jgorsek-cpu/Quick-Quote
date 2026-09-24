@@ -401,20 +401,25 @@ def _cost_summary(book: Workbook, result: QuoteResult) -> None:
 
     if result.pricing:
         row = _section(sheet, row, "Recommended price - requires Sales and Finance review", 5)
-        _header_row(sheet, row, ["Channel", "Target Margin", "Price/Bottle",
+        _header_row(sheet, row, ["Requirement", "Margin", "On cost", "Price/Bottle",
                                  "Margin/Bottle", "Basis"])
         row += 1
         for item in result.pricing:
-            sheet.cell(row=row, column=1, value=item.label)
+            label = item.label + (" - binding" if item.binding else "")
+            sheet.cell(row=row, column=1, value=label).font = (
+                Font(bold=True) if item.binding else Font()
+            )
             sheet.cell(row=row, column=2, value=item.target_margin_pct / 100.0).number_format = PCT
-            sheet.cell(row=row, column=3, value=item.price_per_bottle).number_format = MONEY2
-            sheet.cell(row=row, column=4, value=item.margin_dollars).number_format = MONEY2
-            cell = sheet.cell(row=row, column=5, value=item.basis)
+            sheet.cell(row=row, column=3, value=item.cost_per_bottle).number_format = MONEY2
+            sheet.cell(row=row, column=4, value=item.price_per_bottle).number_format = MONEY2
+            sheet.cell(row=row, column=5, value=item.margin_dollars).number_format = MONEY2
+            cell = sheet.cell(row=row, column=6, value=item.basis)
             cell.alignment = Alignment(wrap_text=True, vertical="top")
             row += 1
         warning = sheet.cell(
             row=row, column=1,
-            value="Margin targets are configured reference data, not a Finance decision. "
+            value="Where an account is held to more than one requirement the price has to "
+                  "clear all of them, so the binding row is the one that sets it. "
                   "Quick Quote does not set final pricing, margin or customer-facing terms.")
         warning.font = Font(bold=True, color=RED)
         warning.fill = PatternFill("solid", fgColor=AMBER_FILL)

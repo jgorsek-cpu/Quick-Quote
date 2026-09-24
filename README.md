@@ -146,12 +146,12 @@ grows. They cannot: **manufacturing cost per bottle is about 50% higher at
 The machine follows the size of the run, using the thresholds from the
 operational price sheet:
 
-| Capsules in run | Machine |
-|---|---|
-| under 100,000 | Schaefer |
-| 100,000 – 400,000 | BOSCH 705 |
-| 400,000 – 2,000,000 | BOSCH 1505 |
-| 2,000,000 and above | BOSCH 3005 |
+| Capsules in run | Machine | Speed |
+|---|---|---|
+| under 100,000 | Schaefer | 8,000/hr |
+| 100,000 – 400,000 | BOSCH 705 | 32,000/hr |
+| 400,000 – 2,000,000 | BOSCH 1505 | 75,000/hr |
+| 2,000,000 and above | BOSCH 3005 | 110,000/hr |
 
 ### Volume price breaks
 
@@ -167,16 +167,32 @@ What moves is labour, overhead and the machine.
 A suggested price per channel from its target margin, where
 `margin = (price - cost) / price`:
 
-```
-contract   20%   ->  price = cost / 0.80
-b2c        80%   ->  price = cost / 0.20
-```
+Finance set the requirement per account, and an account can face two at once
+on two different cost bases:
+
+| Account | Margin |
+|---|---|
+| Walmart, Costco | 30% including overhead |
+| Nature's Lab | 65% |
+| Every other account | 20% including overhead **and** 30% excluding it |
+
+Materials, packaging and analytical testing are purchases and carry no
+allocated overhead, so the only thing the second basis strips is
+manufacturing's overhead share. The two are different tests: on a typical
+capsule the 30%-excluding rule is the tighter one, and the quote marks
+whichever binds.
+
+**A tablet, powder or stick pack may be quoted down to 20% whichever account
+it is.** The floor only ever relaxes a requirement — it never raises one, so
+a standard account already at 20% is unaffected.
 
 These are **recommendations for Sales and Finance**, labelled as such
-everywhere they appear. The margin targets in `pricing.csv` are configured
-defaults, not a Finance decision — set them before anyone quotes from them.
-When cost excludes unresolved lines the recommendation says so, because a
-price built on an understated cost is understated too.
+everywhere they appear: the rules say what a price has to clear, not what to
+charge. A rule not yet confirmed by Finance raises a blocking flag, and a
+quote with no customer on it says so rather than quietly applying the
+standard terms — Walmart and Costco are held higher. When cost excludes
+unresolved lines the recommendation says so, because a price built on an
+understated cost is understated too.
 
 ---
 
@@ -210,7 +226,7 @@ Tests:
 .venv/Scripts/python -m pytest          # Windows
 ```
 
-304 tests.
+335 tests.
 
 ---
 
@@ -458,7 +474,7 @@ Two properties make it safe to hand round:
 | `blenders.csv` | Blender volumes, for splitting a run into batches |
 | `packaging_lines.csv` | Packaging line rates and crew by bottle count |
 | `bulk_density.csv` | Bulk density by identity, then by class, for the fill check |
-| `pricing.csv` | Target margin per sales channel |
+| `margin_rules.csv` | Minimum margin by account, on both cost bases |
 
 `uom` extends the specified PO export format (`KG`, `EA`, `M` for per-thousand).
 It is optional and inferred when absent, and it is what lets capsule shells be
@@ -500,7 +516,7 @@ backend/quickquote/
   schemas.py   the one shape every producer feeds and every consumer reads
   store.py     quote registry and artifacts
 frontend/      index.html · static/app.js · static/styles.css
-tests/         304 tests
+tests/         335 tests
 samples/       demo quote sheets and generated artifacts
 ```
 
@@ -527,10 +543,9 @@ samples/       demo quote sheets and generated artifacts
   read NOT A QUOTE instead of INTERNAL DRAFT, and the web app shows a red
   banner. `scripts/load_real_data.sh` clears the marker when it rebuilds the
   tables from DrVita's exports.
-- **Two rates Operations did not supply.** The Schaefer's speed, set up and
-  cleaning are still placeholders, so runs under 100,000 capsules carry a
-  guessed encapsulation time; and the Chilsinator's granulation rate is not on
-  file at all.
+- **One rate Operations have not supplied.** The Chilsinator's granulation
+  rate, which is the only thing still stopping a tablet being quoted. Every
+  encapsulator, packaging line, powder and packet rate is confirmed.
 - **Tablets and gummies cannot be quoted yet.** A tablet is blocked by
   granulation alone — Operations supplied the Fette press rate — and a gummy
   by having no work centre at all, which Finance confirmed in September 2026 is

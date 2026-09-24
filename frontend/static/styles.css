@@ -269,3 +269,6 @@ label.field.derived input, label.field.derived select { background: #f6f9ff; bor
 .price-card { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; align-items: baseline; }
 .price-card .amount { font-size: 22px; font-weight: 700; color: var(--navy); font-variant-numeric: tabular-nums; }
 .price-card .sub { grid-column: 1 / -1; color: var(--muted); font-size: 11.5px; margin-bottom: 8px; }
+/* The requirement that actually sets the price, where an account faces two. */
+.price-card.binding { border-left: 3px solid var(--navy); padding-left: 10px; }
+.price-card.binding .amount { color: var(--navy); }

@@ -39,7 +39,8 @@ def test_reference_catalogs_are_served(client):
 def test_quote_carries_price_breaks_and_pricing(client):
     body = client.post("/api/quotes", json=QUOTE).json()
     assert body["price_breaks"]
-    assert {item["channel"] for item in body["pricing"]} == {"contract", "b2c"}
+    assert {item["rule"] for item in body["pricing"]} == {"default"}
+    assert sum(item["binding"] for item in body["pricing"]) == 1
     assert body["product"]["derived"]
 
 
