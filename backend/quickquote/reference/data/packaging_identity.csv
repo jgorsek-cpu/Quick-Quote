@@ -1,5 +1,5 @@
 canonical,aliases,role,size_required,units_per_container,notes
-hdpe bottle white,hdpe bottle white|white hdpe bottle|hdpe packer bottle white|packer bottle white|white packer bottle|hdpe packer white|white round bottle,bottle,1,,Size in cc must match exactly
+hdpe bottle white,hdpe bottle white|white hdpe bottle|white hdpe packer|hdpe packer bottle white|packer bottle white|white packer bottle|hdpe packer white|white round bottle,bottle,1,,"Size in cc must match exactly. ""White HDPE packer"" is DrVita's own wording for the same bottle."
 hdpe bottle black,hdpe bottle black|black hdpe bottle|hdpe packer bottle black|packer bottle black|black packer bottle|hdpe packer black,bottle,1,,Size in cc must match exactly
 hdpe bottle amber,hdpe bottle amber|amber hdpe bottle|hdpe packer bottle amber|packer bottle amber|amber packer bottle|hdpe packer amber,bottle,1,,Size in cc must match exactly
 pet bottle clear,pet bottle clear|clear pet bottle|pet packer bottle clear|pet packer clear|clear packer bottle,bottle,1,,Size in cc must match exactly

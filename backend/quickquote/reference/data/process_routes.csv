@@ -4,11 +4,13 @@ capsule,2,Blend cleaning,Cleaning- blending,fixed_hours,0,
 capsule,3,Encapsulation,,units_per_hour_machine,1,Machine selected from the capsule count in the run
 capsule,4,Encapsulation cleaning,Cleaning- Encap,fixed_hours,0,
 capsule,5,Bottling,Packaging,bottles_per_hour_table,1,CVC line - speed varies with count and capsule size
+capsule,6,Bottling cleaning,Cleaning- Packaging,fixed_hours,0,Operations supplied an hour a batch
 tablet,1,Compounding,Blend,batch_hours_by_components,1,
 tablet,2,Granulation,Chilsinator,units_per_hour,1,
 tablet,3,Tablet press,Tablet press,units_per_hour,1,
 tablet,4,Blend cleaning,Cleaning- blending,fixed_hours,0,
 tablet,5,Bottling,Packaging,bottles_per_hour_table,1,
+tablet,6,Bottling cleaning,Cleaning- Packaging,fixed_hours,0,Operations supplied an hour a batch
 powder,1,Compounding,Blend,batch_hours_by_components,1,
 powder,2,Powder fill,Powder Fill,units_per_hour,1,
 powder,3,Blend cleaning,Cleaning- blending,fixed_hours,0,
@@ -19,7 +21,9 @@ packet,3,Packet cleaning,Cleaning - PakRapid,fixed_hours,0,
 softgel,1,Compounding,Blend,batch_hours_by_components,1,
 softgel,2,Encapsulation,,units_per_hour_machine,1,Softgel encapsulation - no work centre on file
 softgel,3,Bottling,Packaging,bottles_per_hour_table,1,
+softgel,4,Bottling cleaning,Cleaning- Packaging,fixed_hours,0,Operations supplied an hour a batch
 gummy,1,Compounding,,batch_hours_by_components,1,No gummy work centre in the rate table
 gummy,2,Depositing,,units_per_hour,1,No gummy work centre in the rate table
 gummy,3,Curing,,fixed_hours,1,No gummy work centre in the rate table
 gummy,4,Bottling,Packaging,bottles_per_hour_table,1,
+gummy,5,Bottling cleaning,Cleaning- Packaging,fixed_hours,0,Operations supplied an hour a batch

@@ -35,7 +35,10 @@ PO_NUMBER_HEADERS = ("purchase order number", "po number", "po no", "order numbe
 
 MASTER_PART_HEADERS = ("part", "part number", "item")
 MASTER_DESC_HEADERS = ("description", "desc", "itmdesc", "item description")
-MASTER_UOM_HEADERS = ("um_purchasing", "um_inventory", "uom", "um")
+MASTER_UOM_HEADERS = ("um_purchasing", "uom", "um")
+# Fallen back to when the purchasing unit is one the engine cannot price:
+# a band purchased by the roll ("KM") is stocked, and costed, by the thousand.
+MASTER_STOCK_UOM_HEADERS = ("um_inventory", "um_stock")
 MASTER_LINE_HEADERS = ("product_line", "product line", "line")
 
 # Report exports carry subtotal rows; these are skipped and counted, not
@@ -57,6 +60,7 @@ class IngestReport:
     parts_without_description: list[str] = field(default_factory=list)
     descriptions_repaired: int = 0
     descriptions_from_po: int = 0
+    uom_inferred: list[str] = field(default_factory=list)
     vendors_present: bool = False
     warnings: list[str] = field(default_factory=list)
 
@@ -78,6 +82,8 @@ class IngestReport:
             f"(not in the item master)",
             f"  Parts still with no description: "
             f"{len(self.parts_without_description):,}",
+            f"  Units of measure guessed:  {len(self.uom_inferred):,} "
+            f"(no priceable unit in the item master)",
         ]
         if self.parts_without_description[:10]:
             lines.append(
@@ -232,6 +238,7 @@ def load_item_master(
         part_col = _find(headers, MASTER_PART_HEADERS)
         desc_col = _find(headers, MASTER_DESC_HEADERS)
         uom_col = _find(headers, MASTER_UOM_HEADERS)
+        stock_col = _find(headers, MASTER_STOCK_UOM_HEADERS)
         line_col = _find(headers, MASTER_LINE_HEADERS)
         if part_col is None or desc_col is None:
             report.warnings.append(f"{path.name}: part or description column missing.")
@@ -250,13 +257,17 @@ def load_item_master(
             uom = ""
             if uom_col is not None and uom_col < len(row):
                 uom = str(row[uom_col] or "").strip().upper()
+            stock_uom = ""
+            if stock_col is not None and stock_col < len(row):
+                stock_uom = str(row[stock_col] or "").strip().upper()
             product_line = ""
             if line_col is not None and line_col < len(row):
                 product_line = str(row[line_col] or "").strip()
             # First master wins so an explicit override file can precede a dump.
             master.setdefault(
                 part,
-                {"description": description, "uom": uom, "product_line": product_line},
+                {"description": description, "uom": uom, "stock_uom": stock_uom,
+                 "product_line": product_line},
             )
         report.master_rows = len(master)
     return master
@@ -382,14 +393,23 @@ def aggregate(
         if not description:
             report.parts_without_description.append(part)
 
-        uom = (info.get("uom") or "").upper()
-        if uom not in ("KG", "EA", "M", "LB", "L", "G"):
+        uom = normalise_uom(info.get("uom", ""))
+        uom_basis = "purchasing unit"
+        if uom is None:
+            uom = normalise_uom(info.get("stock_uom", ""))
+            uom_basis = "stocking unit"
+        if uom is None:
+            # Nothing on file names a unit the engine can price, so the part
+            # falls back to a guess -- recorded, so a quote can say so.
             uom = _infer_uom(part, description)
+            uom_basis = "inferred"
+            report.uom_inferred.append(part)
 
         rows.append({
             "part_number": part,
             "description": description,
             "uom": uom,
+            "uom_basis": uom_basis,
             "latest_unit_cost": f"{latest.unit_cost:.6g}",
             "min_unit_cost_ever": f"{min(costs):.6g}",
             "max_unit_cost_ever": f"{max(costs):.6g}",
@@ -414,6 +434,26 @@ def aggregate(
     return rows
 
 
+# Units the engine prices against. Global Shop writes a thousand three ways:
+# "M" as the packaging trade does, "K" as most of the catalogue does, and "KM"
+# for a band bought by the roll and stocked by the thousand. All three mean the
+# unit cost is for a thousand pieces, and reading one of them as "each" costs a
+# thousand times too much -- a 67mm shrink band at $76.80 a bottle instead of
+# $0.0768.
+PRICED_UNITS = {"KG", "EA", "M", "LB", "L", "G"}
+UNIT_ALIASES = {"K": "M", "KM": "M", "THOUSAND": "M", "GM": "G", "GR": "G"}
+
+
+def normalise_uom(*candidates: str) -> str | None:
+    """The first candidate that names a unit the engine can price, or ``None``."""
+    for value in candidates:
+        unit = (value or "").strip().upper()
+        unit = UNIT_ALIASES.get(unit, unit)
+        if unit in PRICED_UNITS:
+            return unit
+    return None
+
+
 def _infer_uom(part: str, description: str) -> str:
     text = f"{part} {description}".lower()
     if "capsule" in text and ("size" in text or part.upper().startswith("RECA")):
@@ -426,6 +466,7 @@ def _infer_uom(part: str, description: str) -> str:
 FIELDNAMES = [
     "part_number", "description", "uom", "latest_unit_cost", "min_unit_cost_ever",
     "max_unit_cost_ever", "latest_po_date", "latest_vendor", "unique_vendor_count",
+    "uom_basis",
     "po_count", "total_qty", "total_spend",
 ]
 

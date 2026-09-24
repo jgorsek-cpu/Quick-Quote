@@ -226,7 +226,7 @@ Tests:
 .venv/Scripts/python -m pytest          # Windows
 ```
 
-335 tests.
+352 tests.
 
 ---
 
@@ -516,7 +516,7 @@ backend/quickquote/
   schemas.py   the one shape every producer feeds and every consumer reads
   store.py     quote registry and artifacts
 frontend/      index.html · static/app.js · static/styles.css
-tests/         335 tests
+tests/         352 tests
 samples/       demo quote sheets and generated artifacts
 ```
 
@@ -543,6 +543,14 @@ samples/       demo quote sheets and generated artifacts
   read NOT A QUOTE instead of INTERNAL DRAFT, and the web app shows a red
   banner. `scripts/load_real_data.sh` clears the marker when it rebuilds the
   tables from DrVita's exports.
+- **Two of DrVita's own numbers disagree about the Schaefer.** Operations
+  said 8,000 capsules an hour; the Curion Turmeric price sheet's machine table
+  says 15,000. On a 60,000-capsule run that is 3.5 hours, or $0.36 a bottle.
+  The engine uses Operations' figure.
+- **Testing counts every formula line.** DrVita's sheets appear to count only
+  the actives — a six-line formula with three excipients was quoted on the 1-3
+  ingredient band — and they charge the band's batch cost with no per-unit
+  component. Both differences need Finance to settle.
 - **One rate Operations have not supplied.** The Chilsinator's granulation
   rate, which is the only thing still stopping a tablet being quoted. Every
   encapsulator, packaging line, powder and packet rate is confirmed.

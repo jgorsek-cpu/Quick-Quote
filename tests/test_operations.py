@@ -552,3 +552,142 @@ class TestPoExportColumns:
             quote(lines=[FormulaLine("MSM", 500.0)]), catalogue, as_of=AS_OF)
         sole = [f for f in result.flags if "Single-supplier" in f.reason]
         assert sole and "FULLER ENTERPRISE" in sole[0].reason
+
+
+class TestUnitOfMeasure:
+    """Global Shop writes a thousand three ways, and reading one as "each"
+    costs a thousand times too much."""
+
+    @pytest.mark.parametrize("purchasing,stock,expected", [
+        ("EA", "EA", "EA"),
+        ("KG", "KG", "KG"),
+        ("M", "M", "M"),
+        ("K", "K", "M"),        # most of DrVita's catalogue writes K
+        ("KM", "M", "M"),       # bought by the roll, stocked by the thousand
+        ("RL", "EA", "EA"),     # a roll is the each it is bought as
+        ("", "KG", "KG"),       # purchasing blank, stocking usable
+    ])
+    def test_it_resolves_to_a_unit_the_engine_can_price(self, purchasing, stock, expected):
+        from quickquote.reference.ingest import normalise_uom
+
+        assert normalise_uom(purchasing, stock) == expected
+
+    def test_a_unit_it_cannot_price_is_refused_not_guessed(self):
+        from quickquote.reference.ingest import normalise_uom
+
+        assert normalise_uom("CS", "IN") is None
+
+    def test_the_purchasing_unit_wins_where_both_are_usable(self):
+        from quickquote.reference.ingest import normalise_uom
+
+        assert normalise_uom("KG", "EA") == "KG"
+
+    def test_a_per_thousand_part_is_not_costed_as_each(self, tmp_path):
+        """A 67mm shrink band is $76.80 a thousand, not $76.80 a bottle."""
+        from openpyxl import Workbook
+        from quickquote.reference.ingest import IngestReport, aggregate, read_po_transactions
+
+        book = Workbook()
+        sheet = book.active
+        sheet.append(["Purchase Order Date", "Part Number", "Description",
+                      "Purchase Order Number", "Vendor", "Vendor Name",
+                      "Order Qty", "Unit Cost"])
+        sheet.append(["2026-04-14", "KSBR67NP", "67MM CLEAR SHRINK BAND", "1",
+                      "AMS", "AMERI-SEAL", 5, 76.8])
+        path = tmp_path / "po.xlsx"
+        book.save(path)
+
+        report = IngestReport()
+        master = {"KSBR67NP": {"description": "67MM CLEAR SHRINK BAND",
+                               "uom": "KM", "stock_uom": "M"}}
+        row = aggregate(read_po_transactions([path], report), master, report)[0]
+        assert row["uom"] == "M"
+        assert row["uom_basis"] == "purchasing unit"
+        assert report.uom_inferred == []
+
+    def test_a_guessed_unit_is_recorded(self, tmp_path):
+        from openpyxl import Workbook
+        from quickquote.reference.ingest import IngestReport, aggregate, read_po_transactions
+
+        book = Workbook()
+        sheet = book.active
+        sheet.append(["Purchase Order Date", "Part Number", "Order Qty", "Unit Cost"])
+        sheet.append(["2026-04-14", "KFC16", 2, 80.1])
+        path = tmp_path / "po.xlsx"
+        book.save(path)
+
+        report = IngestReport()
+        master = {"KFC16": {"description": "16 GRAM COIL RAYON 18lbs/CS",
+                            "uom": "CS", "stock_uom": "IN"}}
+        row = aggregate(read_po_transactions([path], report), master, report)[0]
+        assert row["uom_basis"] == "inferred"
+        assert report.uom_inferred == ["KFC16"]
+
+
+class TestPackOutCompletion:
+    def test_naming_one_component_does_not_lose_the_others(self, reference):
+        """A rep who lists a bottle must not silently lose the capsule shell."""
+        from quickquote.schemas import PackagingLine
+
+        parsed = quote(count_per_bottle=60, servings_per_bottle=30)
+        parsed.packaging = [PackagingLine("bottle", "150CC WHITE HDPE PACKER 38-400")]
+        result = run_pipeline(parsed, reference, as_of=AS_OF)
+        roles = {line.role for line in result.packaging}
+        assert "capsule_shell" in roles and "bottle" in roles
+
+    def test_a_named_component_is_left_alone(self, reference):
+        from quickquote.schemas import PackagingLine
+
+        parsed = quote(count_per_bottle=60, servings_per_bottle=30)
+        parsed.packaging = [PackagingLine("bottle", "400CC WHITE HDPE BOTTLE 45/400")]
+        result = run_pipeline(parsed, reference, as_of=AS_OF)
+        bottles = [line for line in result.packaging if line.role == "bottle"]
+        assert len(bottles) == 1 and "400" in bottles[0].description
+
+
+class TestBottleSizing:
+    def test_the_cheapest_bottle_that_fits_wins_not_the_smallest(self, reference):
+        """A 100cc packer costs more than the 150cc that DrVita buy in volume."""
+        import copy as _copy
+        from datetime import date as _date
+        from quickquote.engine.derive import choose_bottle
+        from quickquote.reference.loader import PoRow
+
+        catalogue = _copy.deepcopy(reference)
+        catalogue.identity_index = None
+        catalogue.po_rows = [
+            PoRow(part_number="KTTP100", description="100cc WHITE HDPE PACKER 38-400",
+                  uom="EA", latest_unit_cost=0.15, min_unit_cost_ever=0.15,
+                  max_unit_cost_ever=0.15, latest_po_date=_date(2026, 4, 1),
+                  latest_vendor="V", unique_vendor_count=1, po_count=3, total_spend=1.0),
+            PoRow(part_number="KTTP150", description="150CC WHITE HDPE PACKER 38-400",
+                  uom="EA", latest_unit_cost=0.119, min_unit_cost_ever=0.119,
+                  max_unit_cost_ever=0.119, latest_po_date=_date(2026, 4, 1),
+                  latest_vendor="V", unique_vendor_count=1, po_count=3, total_spend=1.0),
+        ]
+        choice = choose_bottle(spec(capsule_size="00", count_per_bottle=60,
+                                    servings_per_bottle=30), catalogue)
+        assert choice.row.part_number == "KTTP150"
+        assert "costs more" in choice.basis
+
+    def test_drvitas_own_wording_reaches_the_bottle_identity(self, reference):
+        """The catalogue says "PACKER" where the identity said "bottle"."""
+        from quickquote.engine.identity import resolve_identity
+
+        resolved = resolve_identity("150CC WHITE HDPE PACKER 38-400", reference,
+                                    packaging=True)
+        assert resolved is not None and resolved.canonical == "hdpe bottle white"
+
+
+class TestBottlingCleaning:
+    def test_every_bottled_form_cleans_its_line(self, reference):
+        """Operations supplied the hour; no route was using it."""
+        for form in ("capsule", "tablet", "softgel", "gummy"):
+            steps = [step.step for step in reference.route_for(form)]
+            assert "Bottling cleaning" in steps, form
+
+    def test_it_is_costed_at_the_packaging_crew(self, reference):
+        estimate, _ = estimate_manufacturing(spec(count_per_bottle=60), 7, reference)
+        step = next(s for s in estimate.steps if s.step == "Bottling cleaning")
+        assert step.crew_size == 4 and step.run_hours == pytest.approx(1.0)
+        assert step.cost_per_bottle > 0

@@ -120,7 +120,10 @@ def run_pipeline(
 
     derivation_notes = derive_serving(product)
 
-    if auto_packaging and not parsed.packaging:
+    if auto_packaging:
+        # Fill the roles the rep did not name. derive_packaging leaves anything
+        # already on the sheet alone, so listing a bottle no longer costs the
+        # quote its capsule shell.
         added, notes = derive_packaging(product, parsed.packaging, reference)
         parsed.packaging.extend(added)
         derivation_notes.extend(notes)

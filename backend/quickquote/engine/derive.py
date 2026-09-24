@@ -151,6 +151,7 @@ class BottleChoice:
     neck_mm: float | None
     required_cc: float
     basis: str
+    unit_cost: float = 0.0
 
 
 def required_bottle_cc(product: ProductSpec, reference: ReferenceData) -> float | None:
@@ -169,10 +170,15 @@ def required_bottle_cc(product: ProductSpec, reference: ReferenceData) -> float 
 def choose_bottle(
     product: ProductSpec, reference: ReferenceData, canonical: str = "hdpe bottle white"
 ) -> BottleChoice | None:
-    """Smallest stocked bottle that holds the fill.
+    """Cheapest stocked bottle that holds the fill.
 
     Bottles are only ever chosen from sizes with purchase-order history. The
     system does not size a bottle that has never been bought.
+
+    The cheapest, not the smallest: a bigger bottle is often the cheaper one
+    because it is the one DrVita buy in volume. A 100cc packer costs $0.15
+    where the 150cc costs $0.119, so sizing down would raise the quote. Ties
+    break on the smaller bottle, which is easier to ship.
     """
     required = required_bottle_cc(product, reference)
     if required is None:
@@ -193,12 +199,20 @@ def choose_bottle(
                     f"{product.count_per_bottle} x size {product.capsule_size} capsules "
                     f"needs {required:,.0f}cc at a {reference.bottle_fill_ratio:.0%} fill ratio"
                 ),
+                unit_cost=row.latest_unit_cost,
             )
         )
 
     if not candidates:
         return None
-    return min(candidates, key=lambda choice: choice.volume_cc)
+    cheapest = min(candidates, key=lambda choice: (choice.unit_cost, choice.volume_cc))
+    smallest = min(candidates, key=lambda choice: choice.volume_cc)
+    if cheapest is not smallest and smallest.unit_cost > cheapest.unit_cost:
+        cheapest.basis += (
+            f"; the smaller {smallest.volume_cc:g}cc costs more "
+            f"(${smallest.unit_cost:.4f} against ${cheapest.unit_cost:.4f})"
+        )
+    return cheapest
 
 
 def choose_cap(
