@@ -61,10 +61,11 @@ def test_review_flags_tab_keeps_every_owner(book):
         assert owner in text
 
 
-def test_customer_tab_says_it_is_demonstration_data(book):
+def test_customer_tab_says_it_is_demonstration_data(shipped_reference, heart_health):
     """The shipped tables are illustrative, and the tab must not read as a draft
     of a real quote."""
-    sheet = book["Customer Quote Summary"]
+    result = run_pipeline(heart_health, shipped_reference, as_of=AS_OF)
+    sheet = load_workbook(io.BytesIO(build_workbook(result)))["Customer Quote Summary"]
     banner = str(sheet.cell(row=2, column=1).value)
     assert "NOT A QUOTE" in banner and "DEMONSTRATION DATA" in banner
 

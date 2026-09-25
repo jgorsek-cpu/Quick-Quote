@@ -5,7 +5,7 @@ import shutil
 
 import pytest
 
-from quickquote.reference.loader import get_reference_data, load_reference_data
+from quickquote.reference.loader import load_reference_data
 from quickquote.schemas import FormulaLine, PackagingLine, ParsedQuote, ProductSpec
 
 AS_OF = date(2026, 9, 15)
@@ -13,11 +13,26 @@ AS_OF = date(2026, 9, 15)
 
 @pytest.fixture(scope="session")
 def reference():
-    return get_reference_data()
+    """The tables that ship with the repo.
+
+    Loaded by path rather than through get_reference_data(), which prefers
+    var/reference once the operational tables are built. The suite has to
+    assert the same thing on every machine, whether or not someone has
+    loaded DrVita's data on it.
+    """
+    from quickquote.config import PACKAGE_ROOT
+
+    return load_reference_data(PACKAGE_ROOT / "reference" / "data")
 
 
 @pytest.fixture(scope="session")
-def spec_reference(tmp_path_factory):
+def shipped_reference(reference):
+    """An alias that reads clearly in tests about the demonstration data."""
+    return reference
+
+
+@pytest.fixture(scope="session")
+def spec_reference(tmp_path_factory, reference):
     """Reference data configured the way the written specification assumes.
 
     The shipped defaults cost each production step at its own work centre's
@@ -32,7 +47,7 @@ def spec_reference(tmp_path_factory):
     five times faster than the flat rate the example implies, so the two
     genuinely cannot both hold.
     """
-    source = get_reference_data().source_dir
+    source = reference.source_dir
     target = tmp_path_factory.mktemp("spec_reference")
     for path in source.glob("*.csv"):
         shutil.copy(path, target / path.name)

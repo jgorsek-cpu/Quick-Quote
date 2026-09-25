@@ -287,18 +287,18 @@ class TestDatasetProvenance:
     """A quote costed against demonstration tables is complete, confident and
     fiction. Its part codes look exactly like real ones, so it has to say so."""
 
-    def test_the_shipped_tables_declare_themselves_a_demonstration(self, reference):
-        assert reference.is_demonstration
+    def test_the_shipped_tables_declare_themselves_a_demonstration(self, shipped_reference):
+        assert shipped_reference.is_demonstration
 
-    def test_every_quote_on_them_carries_a_blocking_flag(self, reference):
-        result = run_pipeline(quote(), reference, as_of=AS_OF)
+    def test_every_quote_on_them_carries_a_blocking_flag(self, shipped_reference):
+        result = run_pipeline(quote(), shipped_reference, as_of=AS_OF)
         notice = [flag for flag in result.flags if flag.item == "Reference data"]
         assert notice and notice[0].severity == "blocking"
         assert "NOT FOR QUOTING" in notice[0].reason
         assert result.dataset_is_demonstration
 
-    def test_operational_tables_raise_no_such_flag(self, reference):
-        catalogue = copy.deepcopy(reference)
+    def test_operational_tables_raise_no_such_flag(self, shipped_reference):
+        catalogue = copy.deepcopy(shipped_reference)
         catalogue.rates = {**catalogue.rates, "dataset_is_demonstration": "0",
                            "dataset_label": "DrVita operational data loaded 2026-09-24"}
         result = run_pipeline(quote(), catalogue, as_of=AS_OF)
@@ -691,3 +691,37 @@ class TestBottlingCleaning:
         step = next(s for s in estimate.steps if s.step == "Bottling cleaning")
         assert step.crew_size == 4 and step.run_hours == pytest.approx(1.0)
         assert step.cost_per_bottle > 0
+
+
+class TestReferenceDirectoryChoice:
+    """Forgetting to point at the operational tables is the one mistake that
+    yields a complete, confident quote out of demonstration prices."""
+
+    def _resolve(self, monkeypatch, project_root, override=None):
+        import importlib
+        import quickquote.config as config
+
+        monkeypatch.delenv("QUICKQUOTE_REFERENCE_DIR", raising=False)
+        if override is not None:
+            monkeypatch.setenv("QUICKQUOTE_REFERENCE_DIR", str(override))
+        monkeypatch.setattr(config, "PROJECT_ROOT", project_root)
+        return config._reference_data_dir()
+
+    def test_the_operational_tables_are_preferred_once_built(self, monkeypatch, tmp_path):
+        built = tmp_path / "var" / "reference"
+        built.mkdir(parents=True)
+        (built / "po_history.csv").write_text("part_number\n")
+        assert self._resolve(monkeypatch, tmp_path) == built
+
+    def test_the_shipped_tables_are_the_fallback(self, monkeypatch, tmp_path):
+        from quickquote.config import PACKAGE_ROOT
+
+        chosen = self._resolve(monkeypatch, tmp_path)
+        assert chosen == PACKAGE_ROOT / "reference" / "data"
+
+    def test_an_explicit_setting_still_wins(self, monkeypatch, tmp_path):
+        built = tmp_path / "var" / "reference"
+        built.mkdir(parents=True)
+        (built / "po_history.csv").write_text("part_number\n")
+        elsewhere = tmp_path / "somewhere-else"
+        assert self._resolve(monkeypatch, tmp_path, override=elsewhere) == elsewhere

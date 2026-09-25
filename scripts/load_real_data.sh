@@ -14,7 +14,7 @@
 # Output goes to a directory that is NOT committed, because these tables carry
 # real vendor pricing. Start the app against it with:
 #
-#   QUICKQUOTE_REFERENCE_DIR=var/reference ./run.sh
+#   ./run.sh
 #
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -104,5 +104,5 @@ PYTHONPATH=backend "$PY" -m quickquote.reference.seed \
 echo
 echo "==> Done."
 echo "    Start the app against this data with:"
-echo "      QUICKQUOTE_REFERENCE_DIR=$TARGET ./run.sh"
+echo "      ./run.sh"
 echo "    Proposed identities are in $TARGET/proposed for R&D and Purchasing to review."

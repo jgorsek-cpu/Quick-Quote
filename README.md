@@ -226,7 +226,7 @@ Tests:
 .venv/Scripts/python -m pytest          # Windows
 ```
 
-353 tests.
+356 tests.
 
 ---
 
@@ -358,7 +358,7 @@ not production pricing. Point the system at real data with two commands.
 
 ```bash
 scripts/load_real_data.sh "Price Sheet.xlsx" Raw_PO.xlsx PKG_PO.xlsx
-QUICKQUOTE_REFERENCE_DIR=var/reference ./run.sh
+./run.sh
 ```
 
 The first argument is the workbook holding the inventory master; the rest are
@@ -516,7 +516,7 @@ backend/quickquote/
   schemas.py   the one shape every producer feeds and every consumer reads
   store.py     quote registry and artifacts
 frontend/      index.html · static/app.js · static/styles.css
-tests/         353 tests
+tests/         356 tests
 samples/       demo quote sheets and generated artifacts
 ```
 
